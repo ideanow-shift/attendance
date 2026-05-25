@@ -825,7 +825,11 @@ function showPage(name) {
 // ─── マスタデータ取得 ────────────────────────────────────────────
 async function loadMasterData() {
     try {
-        const res  = await fetch(GAS_API_URL, { method: "GET", redirect: "follow" });
+        const res  = await fetch(GAS_API_URL, {
+            method: "GET",
+            redirect: "follow",
+            mode: "cors",
+        });
         const data = await res.json();
         if (!data.ok) throw new Error(data.error);
 
@@ -955,7 +959,10 @@ async function fetchPunchLogs(fromDate, toDate, storeName) {
     if (toDate)   params.append("to",   toDate);
     // 店舗名フィルタはGAS側で行わず全件取得してJS側でフィルタ
 
-    const res  = await fetch(`${GAS_API_URL}?${params}`, { redirect: "follow" });
+    const res  = await fetch(`${GAS_API_URL}?${params}`, {
+        redirect: "follow",
+        mode: "cors",
+    });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error);
 
