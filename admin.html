@@ -825,11 +825,7 @@ function showPage(name) {
 // ─── マスタデータ取得 ────────────────────────────────────────────
 async function loadMasterData() {
     try {
-        const res  = await fetch(GAS_API_URL, {
-            method: "GET",
-            redirect: "follow",
-            mode: "cors",
-        });
+        const res  = await fetch(GAS_API_URL, { method: "GET", redirect: "follow" });
         const data = await res.json();
         if (!data.ok) throw new Error(data.error);
 
@@ -924,9 +920,7 @@ async function loadDailyData() {
     try {
         // GASから打刻ログを取得（現在はモックデータ）
         // 実装後は打刻ログSSからデータを取得
-        console.log("fetchPunchLogs開始:", date, store);
         const logs = await fetchPunchLogs(date, date, store);
-        console.log("取得結果:", logs);
 
         document.getElementById("dailyTableTitle").textContent =
             `日別打刻データ（${date}${store ? " / " + store : ""}）`;
@@ -954,25 +948,13 @@ async function loadDailyData() {
 }
 
 async function fetchPunchLogs(fromDate, toDate, storeName) {
-    const params = new URLSearchParams({ action: "punchLogs" });
-    if (fromDate) params.append("from", fromDate);
-    if (toDate)   params.append("to",   toDate);
-    // 店舗名フィルタはGAS側で行わず全件取得してJS側でフィルタ
-
-    const res  = await fetch(`${GAS_API_URL}?${params}`, {
-        redirect: "follow",
-        mode: "cors",
-    });
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.error);
-
-    return (data.logs || []).map(log => ({
-        staffName: log.staffName,
-        storeName: log.storeName,
-        type:      log.typeLabel || log.punchType,
-        time:      log.time,
-        empType:   log.empType,
-    }));
+    // 打刻ログスプレッドシートからデータを取得
+    // 現在はGAS経由で取得（GAS側にdoGetPunchLogs関数を追加予定）
+    // 暫定的にサンプルデータを返す
+    return [
+        { staffName: "板垣 雄大", storeName: "BASSA久米川店", type: "出勤", time: "08:42", empType: "管理職" },
+        { staffName: "幸田 愛歌", storeName: "BASSA久米川店", type: "出勤", time: "08:39", empType: "正社員" },
+    ];
 }
 
 // ─── 月別データ ──────────────────────────────────────────────────
