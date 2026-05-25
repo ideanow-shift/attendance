@@ -920,7 +920,9 @@ async function loadDailyData() {
     try {
         // GASから打刻ログを取得（現在はモックデータ）
         // 実装後は打刻ログSSからデータを取得
+        console.log("fetchPunchLogs開始:", date, store);
         const logs = await fetchPunchLogs(date, date, store);
+        console.log("取得結果:", logs);
 
         document.getElementById("dailyTableTitle").textContent =
             `日別打刻データ（${date}${store ? " / " + store : ""}）`;
