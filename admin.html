@@ -1,0 +1,1102 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IDEA NOV 勤怠管理 - 管理者画面</title>
+    <style>
+        :root {
+            --bg-color:         #fcfbf7;
+            --card-bg:          #ffffff;
+            --text-main:        #1a202c;
+            --text-muted:       #718096;
+            --border:           #e2e8f0;
+            --kot-green:        #16a34a;
+            --kot-green-dark:   #15803d;
+            --kot-green-light:  #dcfce7;
+            --kot-orange:       #f97316;
+            --kot-orange-dark:  #ea580c;
+            --kot-gray:         #e2e8f0;
+            --kot-gray-dark:    #cbd5e0;
+            --kot-gray-text:    #4a5568;
+            --danger:           #dc2626;
+            --danger-light:     #fee2e2;
+            --warning:          #d97706;
+            --warning-light:    #fef3c7;
+            --sidebar-w:        240px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Helvetica Neue', Arial, "Hiragino Sans", "Meiryo", sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ─── ログイン画面 ─── */
+        #loginScreen {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+        }
+
+        .login-card {
+            background: white;
+            border-radius: 20px;
+            padding: 48px 40px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.08);
+            text-align: center;
+        }
+
+        .login-logo {
+            font-size: 13px;
+            font-weight: 800;
+            letter-spacing: 0.15em;
+            color: var(--kot-green);
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+
+        .login-title {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--text-main);
+            margin-bottom: 4px;
+        }
+
+        .login-sub {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 36px;
+        }
+
+        .login-field {
+            margin-bottom: 16px;
+            text-align: left;
+        }
+
+        .login-field label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--kot-gray-text);
+            margin-bottom: 6px;
+        }
+
+        .login-field input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1.5px solid var(--border);
+            border-radius: 10px;
+            font-size: 15px;
+            transition: border-color 0.2s;
+            outline: none;
+        }
+
+        .login-field input:focus {
+            border-color: var(--kot-green);
+        }
+
+        .login-btn {
+            width: 100%;
+            padding: 14px;
+            background: var(--kot-green);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            margin-top: 8px;
+            transition: background 0.2s;
+        }
+
+        .login-btn:hover { background: var(--kot-green-dark); }
+
+        .login-error {
+            color: var(--danger);
+            font-size: 13px;
+            margin-top: 12px;
+            display: none;
+        }
+
+        /* ─── メイン画面 ─── */
+        #mainScreen { display: none; min-height: 100vh; }
+
+        /* サイドバー */
+        .sidebar {
+            position: fixed;
+            top: 0; left: 0;
+            width: var(--sidebar-w);
+            height: 100vh;
+            background: white;
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            z-index: 100;
+            overflow-y: auto;
+        }
+
+        .sidebar-header {
+            padding: 20px 20px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .sidebar-logo {
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.15em;
+            color: var(--kot-green);
+            text-transform: uppercase;
+        }
+
+        .sidebar-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text-main);
+            margin-top: 2px;
+        }
+
+        .sidebar-nav { padding: 12px 0; flex: 1; }
+
+        .nav-section-label {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            padding: 12px 20px 6px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 20px;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--kot-gray-text);
+            cursor: pointer;
+            transition: all 0.15s;
+            border-left: 3px solid transparent;
+        }
+
+        .nav-item:hover {
+            background: var(--kot-green-light);
+            color: var(--kot-green-dark);
+        }
+
+        .nav-item.active {
+            background: var(--kot-green-light);
+            color: var(--kot-green-dark);
+            border-left-color: var(--kot-green);
+            font-weight: 700;
+        }
+
+        .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+
+        .sidebar-footer {
+            padding: 16px 20px;
+            border-top: 1px solid var(--border);
+        }
+
+        .logout-btn {
+            width: 100%;
+            padding: 8px;
+            background: transparent;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 12px;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .logout-btn:hover {
+            background: var(--danger-light);
+            color: var(--danger);
+            border-color: var(--danger);
+        }
+
+        /* メインコンテンツ */
+        .main-content {
+            margin-left: var(--sidebar-w);
+            min-height: 100vh;
+        }
+
+        /* トップバー */
+        .topbar {
+            background: white;
+            border-bottom: 1px solid var(--border);
+            padding: 14px 28px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+        }
+
+        .topbar-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .topbar-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        .topbar-store {
+            background: var(--kot-green-light);
+            color: var(--kot-green-dark);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        /* ページコンテンツ */
+        .page { display: none; padding: 28px; }
+        .page.active { display: block; }
+
+        /* ダッシュボード */
+        .dash-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 28px;
+        }
+
+        .dash-card {
+            background: white;
+            border-radius: 14px;
+            padding: 20px;
+            border: 1px solid var(--border);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .dash-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.06);
+            border-color: var(--kot-green);
+        }
+
+        .dash-card-icon {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .dash-card-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text-main);
+            margin-bottom: 4px;
+        }
+
+        .dash-card-desc {
+            font-size: 11px;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+
+        /* アラートエリア */
+        .alert-section {
+            background: white;
+            border-radius: 14px;
+            border: 1px solid var(--border);
+            padding: 20px;
+            margin-bottom: 28px;
+        }
+
+        .alert-section-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text-main);
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .alert-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            font-size: 13px;
+        }
+
+        .alert-item.warning {
+            background: var(--warning-light);
+            color: var(--warning);
+        }
+
+        .alert-item.danger {
+            background: var(--danger-light);
+            color: var(--danger);
+        }
+
+        /* ストアセレクター */
+        .store-selector-bar {
+            background: white;
+            border-radius: 14px;
+            border: 1px solid var(--border);
+            padding: 16px 20px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .store-selector-bar label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--kot-gray-text);
+        }
+
+        .store-selector-bar select,
+        .store-selector-bar input[type="date"] {
+            padding: 8px 12px;
+            border: 1.5px solid var(--border);
+            border-radius: 8px;
+            font-size: 13px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .store-selector-bar select:focus,
+        .store-selector-bar input[type="date"]:focus {
+            border-color: var(--kot-green);
+        }
+
+        .btn-search {
+            padding: 8px 20px;
+            background: var(--kot-green);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn-search:hover { background: var(--kot-green-dark); }
+
+        /* テーブル */
+        .table-card {
+            background: white;
+            border-radius: 14px;
+            border: 1px solid var(--border);
+            overflow: hidden;
+        }
+
+        .table-card-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .table-card-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .btn-csv {
+            padding: 6px 14px;
+            background: transparent;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 12px;
+            color: var(--kot-gray-text);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .btn-csv:hover {
+            background: var(--kot-green-light);
+            color: var(--kot-green-dark);
+            border-color: var(--kot-green);
+        }
+
+        .table-wrapper { overflow-x: auto; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        thead th {
+            background: #f7fafc;
+            padding: 10px 14px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--kot-gray-text);
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+        }
+
+        tbody td {
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-main);
+            white-space: nowrap;
+        }
+
+        tbody tr:last-child td { border-bottom: none; }
+
+        tbody tr:hover { background: #f7fafc; }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .badge-in { background: var(--kot-green-light); color: var(--kot-green-dark); }
+        .badge-out { background: var(--kot-orange-dark); color: white; }
+        .badge-break { background: var(--kot-gray); color: var(--kot-gray-text); }
+
+        .empty-state {
+            padding: 48px;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        /* ローディング */
+        .loading {
+            padding: 32px;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        .spinner {
+            width: 24px; height: 24px;
+            border: 3px solid var(--border);
+            border-top-color: var(--kot-green);
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            margin: 0 auto 12px;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+<!-- ─── ログイン画面 ─── -->
+<div id="loginScreen">
+    <div class="login-card">
+        <div class="login-logo">IDEA NOV</div>
+        <div class="login-title">勤怠管理システム</div>
+        <div class="login-sub">管理者ログイン</div>
+
+        <div class="login-field">
+            <label>管理者ID</label>
+            <input type="text" id="loginId" placeholder="admin" autocomplete="username">
+        </div>
+        <div class="login-field">
+            <label>パスワード</label>
+            <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password"
+                onkeydown="if(event.key==='Enter') doLogin()">
+        </div>
+        <button class="login-btn" onclick="doLogin()">ログイン</button>
+        <div class="login-error" id="loginError">IDまたはパスワードが違います</div>
+    </div>
+</div>
+
+<!-- ─── メイン画面 ─── -->
+<div id="mainScreen">
+
+    <!-- サイドバー -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-logo">IDEA NOV</div>
+            <div class="sidebar-title">勤怠管理システム</div>
+        </div>
+        <nav class="sidebar-nav">
+            <div class="nav-section-label">勤務データ</div>
+            <div class="nav-item active" onclick="showPage('dashboard')">
+                <span class="nav-icon">🏠</span> ダッシュボード
+            </div>
+            <div class="nav-item" onclick="showPage('daily')">
+                <span class="nav-icon">📅</span> 日別データ
+            </div>
+            <div class="nav-item" onclick="showPage('monthly')">
+                <span class="nav-icon">📊</span> 月別データ
+            </div>
+
+            <div class="nav-section-label">休暇管理</div>
+            <div class="nav-item" onclick="showPage('leave')">
+                <span class="nav-icon">🌴</span> 有給・休暇管理
+            </div>
+            <div class="nav-item" onclick="showPage('approve')">
+                <span class="nav-icon">✅</span> 申請承認
+            </div>
+
+            <div class="nav-section-label">その他</div>
+            <div class="nav-item" onclick="showPage('export')">
+                <span class="nav-icon">📥</span> CSV出力
+            </div>
+        </nav>
+        <div class="sidebar-footer">
+            <button class="logout-btn" onclick="doLogout()">ログアウト</button>
+        </div>
+    </div>
+
+    <!-- メインコンテンツ -->
+    <div class="main-content">
+        <div class="topbar">
+            <div class="topbar-title" id="pageTitle">ダッシュボード</div>
+            <div class="topbar-right">
+                <span id="topbarDate"></span>
+                <span class="topbar-store" id="topbarAdmin">管理者</span>
+            </div>
+        </div>
+
+        <!-- ダッシュボード -->
+        <div class="page active" id="page-dashboard">
+            <div class="dash-grid">
+                <div class="dash-card" onclick="showPage('daily')">
+                    <div class="dash-card-icon">📅</div>
+                    <div class="dash-card-title">日別データ</div>
+                    <div class="dash-card-desc">日ごとの出退勤・打刻一覧を確認</div>
+                </div>
+                <div class="dash-card" onclick="showPage('monthly')">
+                    <div class="dash-card-icon">📊</div>
+                    <div class="dash-card-title">月別データ</div>
+                    <div class="dash-card-desc">月次集計・労働時間を確認</div>
+                </div>
+                <div class="dash-card" onclick="showPage('leave')">
+                    <div class="dash-card-icon">🌴</div>
+                    <div class="dash-card-title">有給・休暇管理</div>
+                    <div class="dash-card-desc">有給残日数・取得状況を確認</div>
+                </div>
+                <div class="dash-card" onclick="showPage('approve')">
+                    <div class="dash-card-icon">✅</div>
+                    <div class="dash-card-title">申請承認</div>
+                    <div class="dash-card-desc">休暇申請の承認・却下</div>
+                </div>
+                <div class="dash-card" onclick="showPage('export')">
+                    <div class="dash-card-icon">📥</div>
+                    <div class="dash-card-title">CSV出力</div>
+                    <div class="dash-card-desc">給与計算用データを出力</div>
+                </div>
+            </div>
+
+            <div class="alert-section">
+                <div class="alert-section-title">⚠️ 対応が必要な項目</div>
+                <div id="alertList">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        データを読み込み中...
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 日別データ -->
+        <div class="page" id="page-daily">
+            <div class="store-selector-bar">
+                <label>店舗</label>
+                <select id="dailyStore"><option>読み込み中...</option></select>
+                <label>日付</label>
+                <input type="date" id="dailyDate">
+                <button class="btn-search" onclick="loadDailyData()">表示</button>
+            </div>
+            <div class="table-card">
+                <div class="table-card-header">
+                    <div class="table-card-title" id="dailyTableTitle">日別打刻データ</div>
+                    <button class="btn-csv" onclick="exportDailyCSV()">📥 CSV出力</button>
+                </div>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>氏名</th>
+                                <th>店舗</th>
+                                <th>打刻種別</th>
+                                <th>打刻時刻</th>
+                                <th>雇用形態</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dailyTableBody">
+                            <tr><td colspan="5" class="empty-state">店舗と日付を選択して「表示」を押してください</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 月別データ -->
+        <div class="page" id="page-monthly">
+            <div class="store-selector-bar">
+                <label>店舗</label>
+                <select id="monthlyStore"><option>読み込み中...</option></select>
+                <label>年月</label>
+                <input type="month" id="monthlyMonth">
+                <button class="btn-search" onclick="loadMonthlyData()">表示</button>
+            </div>
+            <div class="table-card">
+                <div class="table-card-header">
+                    <div class="table-card-title" id="monthlyTableTitle">月別集計データ</div>
+                    <button class="btn-csv" onclick="exportMonthlyCSV()">📥 CSV出力</button>
+                </div>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>氏名</th>
+                                <th>雇用形態</th>
+                                <th>出勤日数</th>
+                                <th>総労働時間</th>
+                                <th>遅刻回数</th>
+                                <th>早退回数</th>
+                            </tr>
+                        </thead>
+                        <tbody id="monthlyTableBody">
+                            <tr><td colspan="6" class="empty-state">店舗と年月を選択して「表示」を押してください</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 有給・休暇管理 -->
+        <div class="page" id="page-leave">
+            <div class="store-selector-bar">
+                <label>店舗</label>
+                <select id="leaveStore"><option>読み込み中...</option></select>
+                <button class="btn-search" onclick="loadLeaveData()">表示</button>
+            </div>
+            <div class="table-card">
+                <div class="table-card-header">
+                    <div class="table-card-title">有給休暇管理</div>
+                    <button class="btn-csv" onclick="exportLeaveCSV()">📥 CSV出力</button>
+                </div>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>氏名</th>
+                                <th>入社日</th>
+                                <th>勤続年数</th>
+                                <th>付与日数</th>
+                                <th>取得日数</th>
+                                <th>残日数</th>
+                                <th>次回付与日</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leaveTableBody">
+                            <tr><td colspan="7" class="empty-state">店舗を選択して「表示」を押してください</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 申請承認 -->
+        <div class="page" id="page-approve">
+            <div class="table-card">
+                <div class="table-card-header">
+                    <div class="table-card-title">休暇申請一覧</div>
+                </div>
+                <div class="empty-state">申請承認機能は近日実装予定です</div>
+            </div>
+        </div>
+
+        <!-- CSV出力 -->
+        <div class="page" id="page-export">
+            <div class="table-card">
+                <div class="table-card-header">
+                    <div class="table-card-title">CSV出力</div>
+                </div>
+                <div style="padding: 24px; display: flex; flex-direction: column; gap: 12px;">
+                    <div class="store-selector-bar" style="margin: 0; border: none; padding: 0; background: none;">
+                        <label>店舗</label>
+                        <select id="exportStore"><option>読み込み中...</option></select>
+                        <label>年月</label>
+                        <input type="month" id="exportMonth">
+                    </div>
+                    <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                        <button class="btn-search" onclick="exportDailyCSVAll()">📅 日別データ CSV</button>
+                        <button class="btn-search" onclick="exportMonthlyCSVAll()">📊 月別集計 CSV</button>
+                        <button class="btn-search" style="background: var(--kot-orange);" onclick="exportLeaveCSV()">🌴 有給管理 CSV</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- /main-content -->
+</div><!-- /mainScreen -->
+
+<script>
+// ════════════════════════════════════════════════════════════════════
+// IDEA NOV 勤怠管理システム - 管理者画面
+// ════════════════════════════════════════════════════════════════════
+
+const GAS_API_URL = "https://script.google.com/macros/s/AKfycbwAjHsIY--ktVQpTfLLNc0RFiWHq1YGvExg1mvhG6iJUX6uapCfqu57dXo3DCis6Bu4/exec";
+
+// 仮の管理者認証（後で本格的に実装）
+const ADMIN_CREDENTIALS = [
+    { id: "admin", pass: "ideanow2026", name: "脇田 将樹" },
+];
+
+let currentAdmin = null;
+let storeMaster = [];
+let staffMaster = [];
+let punchLogs = [];
+
+// ─── ログイン ────────────────────────────────────────────────────
+function doLogin() {
+    const id   = document.getElementById("loginId").value.trim();
+    const pass = document.getElementById("loginPass").value.trim();
+    const found = ADMIN_CREDENTIALS.find(c => c.id === id && c.pass === pass);
+    if (!found) {
+        document.getElementById("loginError").style.display = "block";
+        return;
+    }
+    currentAdmin = found;
+    document.getElementById("loginScreen").style.display = "none";
+    document.getElementById("mainScreen").style.display  = "block";
+    document.getElementById("topbarAdmin").textContent = currentAdmin.name;
+    updateTopbarDate();
+    setInterval(updateTopbarDate, 60000);
+    loadMasterData();
+}
+
+function doLogout() {
+    currentAdmin = null;
+    document.getElementById("mainScreen").style.display  = "none";
+    document.getElementById("loginScreen").style.display = "flex";
+    document.getElementById("loginPass").value = "";
+    document.getElementById("loginError").style.display = "none";
+}
+
+function updateTopbarDate() {
+    const now = new Date();
+    const d = ["日","月","火","水","木","金","土"][now.getDay()];
+    document.getElementById("topbarDate").textContent =
+        `${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日（${d}）`;
+}
+
+// ─── ページ切替 ──────────────────────────────────────────────────
+const pageTitles = {
+    dashboard: "ダッシュボード",
+    daily:     "日別データ",
+    monthly:   "月別データ",
+    leave:     "有給・休暇管理",
+    approve:   "申請承認",
+    export:    "CSV出力",
+};
+
+function showPage(name) {
+    document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+    document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+    document.getElementById("page-" + name).classList.add("active");
+    document.querySelector(`.nav-item[onclick="showPage('${name}')"]`).classList.add("active");
+    document.getElementById("pageTitle").textContent = pageTitles[name] || name;
+}
+
+// ─── マスタデータ取得 ────────────────────────────────────────────
+async function loadMasterData() {
+    try {
+        const res  = await fetch(GAS_API_URL, { method: "GET", redirect: "follow" });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error);
+
+        // 店舗マスタ
+        const storeRows = data.store || [];
+        storeMaster = storeRows.slice(1).map((r, i) => ({
+            id:   String(i + 1),
+            name: (r[0] || "").trim(),
+            rule: (r[1] || "").trim(),
+        })).filter(s => s.name);
+
+        // 社員マスタ
+        const staffRows = data.staff || [];
+        staffMaster = staffRows.slice(1).map((r, i) => ({
+            id:       String(i + 1),
+            staffId:  String(r[0] || "").trim(),
+            store:    (r[2] || "").trim(),
+            rank:     (r[3] || "").trim(),
+            empType:  (r[4] || "").trim(),
+            active:   (r[5] || "").trim(),
+            name:     (r[7] || "").trim(),
+            joinDate: (r[14] || "").trim(),
+            retire:   (r[16] || "").trim(),
+        })).filter(s => s.name && s.active !== "否" && s.active !== "退職" && s.active !== "×" && !s.retire);
+
+        populateStoreSelectors();
+        loadDashboardAlerts();
+
+    } catch (err) {
+        console.error("[マスタ取得エラー]", err);
+        document.getElementById("alertList").innerHTML =
+            `<div class="alert-item danger">⚠️ データ取得に失敗しました: ${err.message}</div>`;
+    }
+}
+
+function populateStoreSelectors() {
+    const options = `<option value="">全店舗</option>` +
+        storeMaster.map(s => `<option value="${s.name}">${s.name}</option>`).join("");
+    ["dailyStore","monthlyStore","leaveStore","exportStore"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = options;
+    });
+}
+
+// ─── ダッシュボード アラート ────────────────────────────────────
+function loadDashboardAlerts() {
+    const alerts = [];
+    // 有給付与対象者チェック（入社6ヶ月の社員）
+    const today = new Date();
+    staffMaster.forEach(s => {
+        if (!s.joinDate) return;
+        const join = new Date(s.joinDate);
+        if (isNaN(join)) return;
+        const months = (today - join) / (1000 * 60 * 60 * 24 * 30);
+        if (months >= 6 && months < 7) {
+            alerts.push({ type: "warning", msg: `${s.name}さん（${s.store}）の有給付与時期です（入社6ヶ月）` });
+        }
+    });
+
+    const list = document.getElementById("alertList");
+    if (alerts.length === 0) {
+        list.innerHTML = `<div style="color: var(--kot-green); font-size: 13px; padding: 8px;">✅ 対応が必要な項目はありません</div>`;
+    } else {
+        list.innerHTML = alerts.map(a =>
+            `<div class="alert-item ${a.type}">⚠️ ${a.msg}</div>`
+        ).join("");
+    }
+}
+
+// ─── 日別データ ──────────────────────────────────────────────────
+function setTodayDate() {
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth()+1).padStart(2,"0");
+    const d = String(today.getDate()).padStart(2,"0");
+    const dateEl = document.getElementById("dailyDate");
+    if (dateEl && !dateEl.value) dateEl.value = `${y}-${m}-${d}`;
+    const monthEl = document.getElementById("monthlyMonth");
+    if (monthEl && !monthEl.value) monthEl.value = `${y}-${m}`;
+    const exportEl = document.getElementById("exportMonth");
+    if (exportEl && !exportEl.value) exportEl.value = `${y}-${m}`;
+}
+
+async function loadDailyData() {
+    const store = document.getElementById("dailyStore").value;
+    const date  = document.getElementById("dailyDate").value;
+    if (!date) { alert("日付を選択してください"); return; }
+
+    const tbody = document.getElementById("dailyTableBody");
+    tbody.innerHTML = `<tr><td colspan="5" class="loading"><div class="spinner"></div>読み込み中...</td></tr>`;
+
+    try {
+        // GASから打刻ログを取得（現在はモックデータ）
+        // 実装後は打刻ログSSからデータを取得
+        const logs = await fetchPunchLogs(date, date, store);
+
+        document.getElementById("dailyTableTitle").textContent =
+            `日別打刻データ（${date}${store ? " / " + store : ""}）`;
+
+        if (logs.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5" class="empty-state">打刻データがありません</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = logs.map(log => {
+            const badgeClass = log.type === "出勤" ? "badge-in" :
+                               log.type === "退勤" ? "badge-out" : "badge-break";
+            return `<tr>
+                <td>${log.staffName}</td>
+                <td>${log.storeName}</td>
+                <td><span class="badge ${badgeClass}">${log.type}</span></td>
+                <td>${log.time}</td>
+                <td>${log.empType}</td>
+            </tr>`;
+        }).join("");
+
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="5" class="empty-state">エラー: ${err.message}</td></tr>`;
+    }
+}
+
+async function fetchPunchLogs(fromDate, toDate, storeName) {
+    // 打刻ログスプレッドシートからデータを取得
+    // 現在はGAS経由で取得（GAS側にdoGetPunchLogs関数を追加予定）
+    // 暫定的にサンプルデータを返す
+    return [
+        { staffName: "板垣 雄大", storeName: "BASSA久米川店", type: "出勤", time: "08:42", empType: "管理職" },
+        { staffName: "幸田 愛歌", storeName: "BASSA久米川店", type: "出勤", time: "08:39", empType: "正社員" },
+    ];
+}
+
+// ─── 月別データ ──────────────────────────────────────────────────
+async function loadMonthlyData() {
+    const store = document.getElementById("monthlyStore").value;
+    const month = document.getElementById("monthlyMonth").value;
+    if (!month) { alert("年月を選択してください"); return; }
+
+    const tbody = document.getElementById("monthlyTableBody");
+    tbody.innerHTML = `<tr><td colspan="6" class="loading"><div class="spinner"></div>集計中...</td></tr>`;
+
+    document.getElementById("monthlyTableTitle").textContent =
+        `月別集計（${month}${store ? " / " + store : ""}）`;
+
+    // 暫定：スタッフマスタから対象店舗のスタッフ一覧を表示
+    setTimeout(() => {
+        const targets = staffMaster.filter(s => !store || s.store.includes(store.replace("BASSA","").replace("KYARA","").trim()));
+        if (targets.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="6" class="empty-state">対象スタッフが見つかりません</td></tr>`;
+            return;
+        }
+        tbody.innerHTML = targets.map(s =>
+            `<tr>
+                <td>${s.name}</td>
+                <td>${s.empType || "-"}</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
+            </tr>`
+        ).join("");
+    }, 500);
+}
+
+// ─── 有給管理 ────────────────────────────────────────────────────
+function calcPaidLeave(joinDateStr) {
+    if (!joinDateStr) return { granted: 0, nextDate: "-", tenure: "-" };
+    const join  = new Date(joinDateStr);
+    const today = new Date();
+    if (isNaN(join)) return { granted: 0, nextDate: "-", tenure: "-" };
+
+    const months = (today - join) / (1000 * 60 * 60 * 24 * 30.44);
+    const years  = months / 12;
+
+    const table = [
+        { months: 6,  days: 10 },
+        { months: 18, days: 11 },
+        { months: 30, days: 12 },
+        { months: 42, days: 14 },
+        { months: 54, days: 16 },
+        { months: 66, days: 18 },
+        { months: 78, days: 20 },
+    ];
+
+    let granted = 0;
+    for (const t of table) {
+        if (months >= t.months) granted = t.days;
+    }
+
+    const tenureYears  = Math.floor(years);
+    const tenureMonths = Math.floor(months % 12);
+    const tenure = `${tenureYears}年${tenureMonths}ヶ月`;
+
+    // 次回付与日
+    let nextMonths = 6;
+    for (const t of table) {
+        if (months < t.months) { nextMonths = t.months; break; }
+        if (t.months === 78) nextMonths = 90; // 6年6ヶ月以降は12ヶ月ごと
+    }
+    const nextDate = new Date(join.getTime() + nextMonths * 30.44 * 24 * 60 * 60 * 1000);
+    const nextStr  = `${nextDate.getFullYear()}/${String(nextDate.getMonth()+1).padStart(2,"0")}/${String(nextDate.getDate()).padStart(2,"0")}`;
+
+    return { granted, nextDate: nextStr, tenure };
+}
+
+function loadLeaveData() {
+    const store = document.getElementById("leaveStore").value;
+    const tbody = document.getElementById("leaveTableBody");
+
+    const targets = staffMaster.filter(s => !store || s.store.includes(store));
+    if (targets.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="empty-state">対象スタッフが見つかりません</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = targets.map(s => {
+        const { granted, nextDate, tenure } = calcPaidLeave(s.joinDate);
+        const taken = 0; // 後でGASから取得
+        const remain = granted - taken;
+        return `<tr>
+            <td>${s.name}</td>
+            <td>${s.joinDate || "-"}</td>
+            <td>${tenure}</td>
+            <td>${granted}日</td>
+            <td>${taken}日</td>
+            <td style="font-weight:bold; color:${remain < 5 ? "var(--warning)" : "var(--kot-green-dark)"}">
+                ${remain}日
+            </td>
+            <td>${nextDate}</td>
+        </tr>`;
+    }).join("");
+}
+
+// ─── CSV出力 ─────────────────────────────────────────────────────
+function exportDailyCSV() {
+    alert("日別データのCSV出力は実装予定です");
+}
+
+function exportMonthlyCSV() {
+    alert("月別データのCSV出力は実装予定です");
+}
+
+function exportLeaveCSV() {
+    const store = document.getElementById("leaveStore")?.value || "";
+    const targets = staffMaster.filter(s => !store || s.store.includes(store));
+    if (targets.length === 0) { alert("先にデータを表示してください"); return; }
+
+    let csv = "\uFEFF氏名,入社日,勤続年数,付与日数,取得日数,残日数,次回付与日\n";
+    targets.forEach(s => {
+        const { granted, nextDate, tenure } = calcPaidLeave(s.joinDate);
+        csv += `${s.name},${s.joinDate || ""},${tenure},${granted},0,${granted},${nextDate}\n`;
+    });
+    downloadCSV(csv, `有給管理_${store || "全店舗"}.csv`);
+}
+
+function exportDailyCSVAll() { alert("日別データのCSV出力は実装予定です"); }
+function exportMonthlyCSVAll() { alert("月別集計のCSV出力は実装予定です"); }
+
+function downloadCSV(content, filename) {
+    const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+    const link  = document.createElement("a");
+    link.href   = URL.createObjectURL(blob);
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+// ─── 初期化 ──────────────────────────────────────────────────────
+window.addEventListener("DOMContentLoaded", () => {
+    setTodayDate();
+});
+</script>
+</body>
+</html>
