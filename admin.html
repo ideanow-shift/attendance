@@ -969,24 +969,94 @@ async function loadMonthlyData() {
     document.getElementById("monthlyTableTitle").textContent =
         `月別集計（${month}${store ? " / " + store : ""}）`;
 
-    // 暫定：スタッフマスタから対象店舗のスタッフ一覧を表示
-    setTimeout(() => {
-        const targets = staffMaster.filter(s => !store || s.store.includes(store.replace("BASSA","").replace("KYARA","").trim()));
+    try {
+        // 月の開始・終了日を計算
+        const [y, m] = month.split("-");
+        const fromDate = `${y}-${m}-01`;
+        const lastDay  = new Date(Number(y), Number(m), 0).getDate();
+        const toDate   = `${y}-${m}-${String(lastDay).padStart(2,"0")}`;
+
+        // 打刻ログ取得
+        const params = new URLSearchParams({ action: "punchLogs", from: fromDate, to: toDate });
+        const res    = await fetch(`${GAS_API_URL}?${params}`, { redirect: "follow" });
+        const data   = await res.json();
+        if (!data.ok) throw new Error(data.error);
+
+        // JS側でフィルタ
+        const logs = (data.logs || []).filter(log => {
+            const storeOk = !store || (log.storeName || "").includes(store);
+            return storeOk;
+        });
+
+        // スタッフごとに集計
+        const staffMap = {};
+        logs.forEach(log => {
+            const key = log.staffId || log.staffName;
+            if (!staffMap[key]) {
+                staffMap[key] = {
+                    name:    log.staffName,
+                    empType: log.empType,
+                    store:   log.storeName,
+                    punches: [],
+                };
+            }
+            staffMap[key].punches.push(log);
+        });
+
+        // 対象スタッフ（打刻がなくてもスタッフマスタから表示）
+        const targets = staffMaster.filter(s => !store || s.store.includes(store));
+
         if (targets.length === 0) {
             tbody.innerHTML = `<tr><td colspan="6" class="empty-state">対象スタッフが見つかりません</td></tr>`;
             return;
         }
-        tbody.innerHTML = targets.map(s =>
-            `<tr>
+
+        tbody.innerHTML = targets.map(s => {
+            const data = staffMap[s.staffId] || staffMap[s.name] || null;
+            if (!data) {
+                return `<tr>
+                    <td>${s.name}</td>
+                    <td>${s.empType || "-"}</td>
+                    <td>0日</td>
+                    <td>-</td>
+                    <td>0回</td>
+                    <td>0回</td>
+                </tr>`;
+            }
+
+            // 出勤日数（clockInの数）
+            const clockIns  = data.punches.filter(p => p.punchType === "clockIn" || p.typeLabel === "出勤");
+            const clockOuts = data.punches.filter(p => p.punchType === "clockOut" || p.typeLabel === "退勤");
+            const workDays  = clockIns.length;
+
+            // 総労働時間の計算
+            let totalMinutes = 0;
+            clockIns.forEach((ci, idx) => {
+                const co = clockOuts[idx];
+                if (!co) return;
+                const inTime  = ci.time  ? ci.time.split(":").map(Number)  : null;
+                const outTime = co.time ? co.time.split(":").map(Number) : null;
+                if (inTime && outTime) {
+                    totalMinutes += (outTime[0]*60 + outTime[1]) - (inTime[0]*60 + inTime[1]);
+                }
+            });
+            const totalH = Math.floor(totalMinutes / 60);
+            const totalM = totalMinutes % 60;
+            const totalStr = totalMinutes > 0 ? `${totalH}時間${totalM}分` : "-";
+
+            return `<tr>
                 <td>${s.name}</td>
                 <td>${s.empType || "-"}</td>
+                <td>${workDays}日</td>
+                <td>${totalStr}</td>
                 <td>-</td>
                 <td>-</td>
-                <td>-</td>
-                <td>-</td>
-            </tr>`
-        ).join("");
-    }, 500);
+            </tr>`;
+        }).join("");
+
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="6" class="empty-state">エラー: ${err.message}</td></tr>`;
+    }
 }
 
 // ─── 有給管理 ────────────────────────────────────────────────────
