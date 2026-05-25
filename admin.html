@@ -953,7 +953,7 @@ async function fetchPunchLogs(fromDate, toDate, storeName) {
     const params = new URLSearchParams({ action: "punchLogs" });
     if (fromDate) params.append("from", fromDate);
     if (toDate)   params.append("to",   toDate);
-    if (storeName) params.append("store", storeName);
+    // 店舗名フィルタはGAS側で行わず全件取得してJS側でフィルタ
 
     const res  = await fetch(`${GAS_API_URL}?${params}`, { redirect: "follow" });
     const data = await res.json();
