@@ -948,13 +948,22 @@ async function loadDailyData() {
 }
 
 async function fetchPunchLogs(fromDate, toDate, storeName) {
-    // 打刻ログスプレッドシートからデータを取得
-    // 現在はGAS経由で取得（GAS側にdoGetPunchLogs関数を追加予定）
-    // 暫定的にサンプルデータを返す
-    return [
-        { staffName: "板垣 雄大", storeName: "BASSA久米川店", type: "出勤", time: "08:42", empType: "管理職" },
-        { staffName: "幸田 愛歌", storeName: "BASSA久米川店", type: "出勤", time: "08:39", empType: "正社員" },
-    ];
+    const params = new URLSearchParams({ action: "punchLogs" });
+    if (fromDate) params.append("from", fromDate);
+    if (toDate)   params.append("to",   toDate);
+    if (storeName) params.append("store", storeName);
+
+    const res  = await fetch(`${GAS_API_URL}?${params}`, { redirect: "follow" });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error);
+
+    return (data.logs || []).map(log => ({
+        staffName: log.staffName,
+        storeName: log.storeName,
+        type:      log.typeLabel || log.punchType,
+        time:      log.time,
+        empType:   log.empType,
+    }));
 }
 
 // ─── 月別データ ──────────────────────────────────────────────────
