@@ -504,6 +504,121 @@
         }
 
         @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ─── 打刻修正モーダル ─── */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            z-index: 200;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-overlay.open { display: flex; }
+
+        .modal {
+            background: white;
+            border-radius: 16px;
+            padding: 32px;
+            width: 100%;
+            max-width: 440px;
+            box-shadow: 0 24px 64px rgba(0,0,0,0.15);
+        }
+
+        .modal-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-main);
+            margin-bottom: 20px;
+        }
+
+        .modal-field {
+            margin-bottom: 14px;
+        }
+
+        .modal-field label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--kot-gray-text);
+            margin-bottom: 6px;
+        }
+
+        .modal-field input,
+        .modal-field select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1.5px solid var(--border);
+            border-radius: 8px;
+            font-size: 14px;
+            outline: none;
+        }
+
+        .modal-field input:focus,
+        .modal-field select:focus {
+            border-color: var(--kot-green);
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 24px;
+        }
+
+        .btn-modal-save {
+            flex: 1;
+            padding: 10px;
+            background: var(--kot-green);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .btn-modal-save:hover { background: var(--kot-green-dark); }
+
+        .btn-modal-delete {
+            padding: 10px 16px;
+            background: var(--danger-light);
+            color: var(--danger);
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .btn-modal-delete:hover { background: var(--danger); color: white; }
+
+        .btn-modal-cancel {
+            padding: 10px 16px;
+            background: transparent;
+            color: var(--text-muted);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .btn-edit {
+            padding: 3px 10px;
+            background: transparent;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 11px;
+            color: var(--kot-gray-text);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .btn-edit:hover {
+            background: var(--kot-green-light);
+            color: var(--kot-green-dark);
+            border-color: var(--kot-green);
+        }
     </style>
 </head>
 <body>
@@ -642,6 +757,7 @@
                                 <th>打刻種別</th>
                                 <th>打刻時刻</th>
                                 <th>雇用形態</th>
+                                <th>操作</th>
                             </tr>
                         </thead>
                         <tbody id="dailyTableBody">
@@ -753,6 +869,43 @@
 
     </div><!-- /main-content -->
 </div><!-- /mainScreen -->
+
+<!-- ─── 打刻修正モーダル ─── -->
+<div class="modal-overlay" id="punchEditModal">
+    <div class="modal">
+        <div class="modal-title">✏️ 打刻修正</div>
+        <div class="modal-field">
+            <label>氏名</label>
+            <input type="text" id="editStaffName" readonly style="background:#f7fafc;">
+        </div>
+        <div class="modal-field">
+            <label>店舗</label>
+            <input type="text" id="editStoreName" readonly style="background:#f7fafc;">
+        </div>
+        <div class="modal-field">
+            <label>打刻種別</label>
+            <select id="editPunchType">
+                <option value="clockIn">出勤</option>
+                <option value="clockOut">退勤</option>
+                <option value="breakStart">休憩開始</option>
+                <option value="breakEnd">休憩終了</option>
+            </select>
+        </div>
+        <div class="modal-field">
+            <label>打刻時刻</label>
+            <input type="time" id="editPunchTime">
+        </div>
+        <div class="modal-field">
+            <label>日付</label>
+            <input type="date" id="editPunchDate">
+        </div>
+        <div class="modal-actions">
+            <button class="btn-modal-save" onclick="savePunchEdit()">保存</button>
+            <button class="btn-modal-delete" onclick="deletePunch()">削除</button>
+            <button class="btn-modal-cancel" onclick="closeEditModal()">キャンセル</button>
+        </div>
+    </div>
+</div>
 
 <script>
 // ════════════════════════════════════════════════════════════════════
@@ -915,46 +1068,113 @@ async function loadDailyData() {
     if (!date) { alert("日付を選択してください"); return; }
 
     const tbody = document.getElementById("dailyTableBody");
-    tbody.innerHTML = `<tr><td colspan="5" class="loading"><div class="spinner"></div>読み込み中...</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" class="loading"><div class="spinner"></div>読み込み中...</td></tr>`;
 
     try {
-        // GASから打刻ログを取得（現在はモックデータ）
-        // 実装後は打刻ログSSからデータを取得
-        const logs = await fetchPunchLogs(date, date, store);
+        const params = new URLSearchParams({ action: "punchLogs", from: date, to: date });
+        const res    = await fetch(`${GAS_API_URL}?${params}`, { redirect: "follow" });
+        const data   = await res.json();
+        if (!data.ok) throw new Error(data.error);
+
+        const logs = (data.logs || []).filter(log =>
+            !store || (log.storeName || "").includes(store)
+        );
 
         document.getElementById("dailyTableTitle").textContent =
             `日別打刻データ（${date}${store ? " / " + store : ""}）`;
 
         if (logs.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="5" class="empty-state">打刻データがありません</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="6" class="empty-state">打刻データがありません</td></tr>`;
             return;
         }
 
         tbody.innerHTML = logs.map(log => {
-            const badgeClass = log.type === "出勤" ? "badge-in" :
-                               log.type === "退勤" ? "badge-out" : "badge-break";
+            const typeLabel = log.typeLabel || log.punchType;
+            const badgeClass = log.punchType === "clockIn"    ? "badge-in" :
+                               log.punchType === "clockOut"   ? "badge-out" : "badge-break";
             return `<tr>
-                <td>${log.staffName}</td>
-                <td>${log.storeName}</td>
-                <td><span class="badge ${badgeClass}">${log.type}</span></td>
-                <td>${log.time}</td>
-                <td>${log.empType}</td>
+                <td>${log.staffName || "-"}</td>
+                <td>${log.storeName || "-"}</td>
+                <td><span class="badge ${badgeClass}">${typeLabel}</span></td>
+                <td>${log.time || "-"}</td>
+                <td>${log.empType || "-"}</td>
+                <td><button class="btn-edit" onclick='openEditModal(${JSON.stringify(log)})'>✏️ 修正</button></td>
             </tr>`;
         }).join("");
 
     } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="5" class="empty-state">エラー: ${err.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="empty-state">エラー: ${err.message}</td></tr>`;
     }
 }
 
-async function fetchPunchLogs(fromDate, toDate, storeName) {
-    // 打刻ログスプレッドシートからデータを取得
-    // 現在はGAS経由で取得（GAS側にdoGetPunchLogs関数を追加予定）
-    // 暫定的にサンプルデータを返す
-    return [
-        { staffName: "板垣 雄大", storeName: "BASSA久米川店", type: "出勤", time: "08:42", empType: "管理職" },
-        { staffName: "幸田 愛歌", storeName: "BASSA久米川店", type: "出勤", time: "08:39", empType: "正社員" },
-    ];
+// ─── 打刻修正モーダル ────────────────────────────────────────────
+let currentEditLog = null;
+
+function openEditModal(log) {
+    currentEditLog = log;
+    document.getElementById("editStaffName").value  = log.staffName || "";
+    document.getElementById("editStoreName").value  = log.storeName || "";
+    document.getElementById("editPunchType").value  = log.punchType || "clockIn";
+    document.getElementById("editPunchTime").value  = log.time      || "";
+    document.getElementById("editPunchDate").value  = log.date      || "";
+    document.getElementById("punchEditModal").classList.add("open");
+}
+
+function closeEditModal() {
+    document.getElementById("punchEditModal").classList.remove("open");
+    currentEditLog = null;
+}
+
+async function savePunchEdit() {
+    if (!currentEditLog) return;
+    const newType  = document.getElementById("editPunchType").value;
+    const newTime  = document.getElementById("editPunchTime").value;
+    const newDate  = document.getElementById("editPunchDate").value;
+
+    const typeLabels = { clockIn:"出勤", clockOut:"退勤", breakStart:"休憩開始", breakEnd:"休憩終了" };
+
+    try {
+        const res  = await fetch(GAS_API_URL, {
+            method: "POST",
+            body: JSON.stringify({
+                action:        "updatePunch",
+                punchId:       currentEditLog.punchId,
+                punchType:     newType,
+                punchTypeLabel: typeLabels[newType] || newType,
+                date:          newDate,
+                time:          newTime,
+            }),
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error);
+        alert("修正しました");
+        closeEditModal();
+        loadDailyData();
+    } catch (err) {
+        alert("エラー: " + err.message);
+    }
+}
+
+async function deletePunch() {
+    if (!currentEditLog) return;
+    if (!confirm(`${currentEditLog.staffName}さんの打刻を削除しますか？`)) return;
+
+    try {
+        const res  = await fetch(GAS_API_URL, {
+            method: "POST",
+            body: JSON.stringify({
+                action:  "deletePunch",
+                punchId: currentEditLog.punchId,
+            }),
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error);
+        alert("削除しました");
+        closeEditModal();
+        loadDailyData();
+    } catch (err) {
+        alert("エラー: " + err.message);
+    }
 }
 
 // ─── 月別データ ──────────────────────────────────────────────────
