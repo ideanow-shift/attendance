@@ -232,6 +232,115 @@
         .punch-btn { font-size: 18px; min-height: 96px; }
         .keypad button { height: 64px; font-size: 24px; }
     }
+
+    /* ─── 休暇申請モーダル ─── */
+    .leave-modal-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.5);
+        z-index: 9998;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+    }
+    .leave-modal-overlay.open { display: flex; }
+
+    .leave-modal {
+        background: white;
+        border-radius: 20px;
+        padding: 28px 24px;
+        width: 100%;
+        max-width: 420px;
+        box-shadow: 0 24px 64px rgba(0,0,0,0.2);
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+    .leave-modal-title {
+        font-size: 18px;
+        font-weight: 800;
+        color: #1a202c;
+        margin-bottom: 4px;
+    }
+
+    .leave-modal-staff {
+        font-size: 14px;
+        color: #718096;
+        margin-bottom: 20px;
+    }
+
+    .leave-field {
+        margin-bottom: 16px;
+    }
+
+    .leave-field label {
+        display: block;
+        font-size: 12px;
+        font-weight: 700;
+        color: #4a5568;
+        margin-bottom: 6px;
+        letter-spacing: 0.05em;
+    }
+
+    .leave-field select,
+    .leave-field input[type="date"] {
+        width: 100%;
+        padding: 12px 14px;
+        border: 1.5px solid #cbd5e0;
+        border-radius: 10px;
+        font-size: 15px;
+        font-family: inherit;
+        outline: none;
+        background: white;
+    }
+
+    .leave-field select:focus,
+    .leave-field input:focus {
+        border-color: #6366f1;
+    }
+
+    .leave-hours-preview {
+        background: #eef2ff;
+        border-radius: 10px;
+        padding: 10px 14px;
+        font-size: 13px;
+        color: #4338ca;
+        font-weight: 600;
+        margin-bottom: 16px;
+        display: none;
+    }
+    .leave-hours-preview.show { display: block; }
+
+    .leave-modal-actions {
+        display: flex;
+        gap: 10px;
+    }
+
+    .btn-leave-submit {
+        flex: 1;
+        padding: 14px;
+        background: #6366f1;
+        color: white;
+        border: none;
+        border-radius: 12px;
+        font-size: 15px;
+        font-weight: 700;
+        cursor: pointer;
+        font-family: inherit;
+    }
+    .btn-leave-submit:hover { background: #4f46e5; }
+
+    .btn-leave-cancel {
+        padding: 14px 20px;
+        background: transparent;
+        color: #718096;
+        border: 1.5px solid #e2e8f0;
+        border-radius: 12px;
+        font-size: 15px;
+        cursor: pointer;
+        font-family: inherit;
+    }
 </style>
 </head>
 <body>
@@ -327,6 +436,14 @@
         </div>
     </div>
 
+    <!-- 休暇申請ボタン -->
+    <div class="punch-card" style="margin-top: 0;">
+        <button class="punch-btn" id="btnLeave" disabled onclick="openLeaveModal()"
+            style="width:100%; background: linear-gradient(180deg,#818cf8 0%,#6366f1 70%,#4f46e5 100%); min-height:72px; font-size:18px;">
+            <span class="icon">📅</span><span>休暇申請</span>
+        </button>
+    </div>
+
 </div>
 
 <!-- オーバーレイ -->
@@ -336,6 +453,52 @@
         <div class="overlay-title" id="overlayTitle">お疲れ様でした！</div>
         <div class="overlay-sub"   id="overlaySub">出勤の打刻を記録しました</div>
         <div class="overlay-name"  id="overlayName"></div>
+    </div>
+</div>
+
+<!-- 休暇申請モーダル -->
+<div class="leave-modal-overlay" id="leaveModal">
+    <div class="leave-modal">
+        <div class="leave-modal-title">📅 休暇申請</div>
+        <div class="leave-modal-staff" id="leaveStaffName"></div>
+
+        <div class="leave-field">
+            <label>休暇の種別</label>
+            <select id="leaveType" onchange="onLeaveTypeChange()">
+                <option value="paid_full">有給休暇（1日）</option>
+                <option value="paid_am">有給休暇（午前休）</option>
+                <option value="paid_pm">有給休暇（午後休）</option>
+                <option value="paid_hour">有給休暇（時間休）</option>
+                <option value="special">特別休暇（慶弔など）</option>
+            </select>
+        </div>
+
+        <div class="leave-field">
+            <label>申請日</label>
+            <input type="date" id="leaveDate">
+        </div>
+
+        <div class="leave-field" id="leaveTimeField" style="display:none;">
+            <label>時間帯</label>
+            <div style="display:flex; gap:10px; align-items:center;">
+                <input type="time" id="leaveTimeFrom" style="flex:1; padding:10px; border:1.5px solid #cbd5e0; border-radius:8px; font-size:15px;">
+                <span>〜</span>
+                <input type="time" id="leaveTimeTo" style="flex:1; padding:10px; border:1.5px solid #cbd5e0; border-radius:8px; font-size:15px;">
+            </div>
+        </div>
+
+        <div class="leave-field">
+            <label>理由・備考</label>
+            <textarea id="leaveReason" rows="3" placeholder="例：私用のため、慶弔のため など"
+                style="width:100%; padding:10px 12px; border:1.5px solid #cbd5e0; border-radius:8px; font-size:14px; resize:none; font-family:inherit;"></textarea>
+        </div>
+
+        <div class="leave-hours-preview" id="leaveHoursPreview"></div>
+
+        <div class="leave-modal-actions">
+            <button class="btn-leave-submit" onclick="submitLeave()">申請する</button>
+            <button class="btn-leave-cancel" onclick="closeLeaveModal()">キャンセル</button>
+        </div>
     </div>
 </div>
 
@@ -639,7 +802,7 @@ function resetPinState() {
 // ════════════════════════════════════════════════════════════════════
 function updatePunchButtons() {
     const enabled = !!(currentStore && currentStaff && authStatus === "authenticated");
-    ["btnIn","btnOut","btnBreak","btnBack"].forEach(id => {
+    ["btnIn","btnOut","btnBreak","btnBack","btnLeave"].forEach(id => {
         document.getElementById(id).disabled = !enabled;
     });
 }
@@ -789,8 +952,136 @@ function escapeHtml(s) {
 }
 
 // ════════════════════════════════════════════════════════════════════
-// 起動
+// 休暇申請
 // ════════════════════════════════════════════════════════════════════
+const LEAVE_HOURS = {
+    paid_full: 8,
+    paid_am:   4,
+    paid_pm:   4,
+    paid_hour: 0, // 時間指定
+    special:   0, // 有給消化なし
+};
+
+const LEAVE_LABELS = {
+    paid_full: "有給休暇（1日）",
+    paid_am:   "有給休暇（午前休）",
+    paid_pm:   "有給休暇（午後休）",
+    paid_hour: "有給休暇（時間休）",
+    special:   "特別休暇",
+};
+
+function openLeaveModal() {
+    if (!currentStaff) return;
+    document.getElementById("leaveStaffName").textContent =
+        `${currentStaff.name}（${currentStore ? currentStore.name : ""}）`;
+
+    // 今日の日付をデフォルトに
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth()+1).padStart(2,"0");
+    const d = String(today.getDate()).padStart(2,"0");
+    document.getElementById("leaveDate").value = `${y}-${m}-${d}`;
+    document.getElementById("leaveType").value = "paid_full";
+    document.getElementById("leaveReason").value = "";
+    document.getElementById("leaveTimeFrom").value = "";
+    document.getElementById("leaveTimeTo").value = "";
+    onLeaveTypeChange();
+    document.getElementById("leaveModal").classList.add("open");
+}
+
+function closeLeaveModal() {
+    document.getElementById("leaveModal").classList.remove("open");
+}
+
+function onLeaveTypeChange() {
+    const type = document.getElementById("leaveType").value;
+    const timeField = document.getElementById("leaveTimeField");
+    const preview   = document.getElementById("leaveHoursPreview");
+
+    if (type === "paid_hour") {
+        timeField.style.display = "block";
+        preview.classList.remove("show");
+    } else if (type === "special") {
+        timeField.style.display = "none";
+        preview.textContent = "有給残日数には影響しません";
+        preview.classList.add("show");
+    } else {
+        timeField.style.display = "none";
+        const h = LEAVE_HOURS[type];
+        preview.textContent = `有給消化：${h}時間（${h/8}日分）`;
+        preview.classList.add("show");
+    }
+}
+
+async function submitLeave() {
+    const type     = document.getElementById("leaveType").value;
+    const date     = document.getElementById("leaveDate").value;
+    const reason   = document.getElementById("leaveReason").value.trim();
+    const timeFrom = document.getElementById("leaveTimeFrom").value;
+    const timeTo   = document.getElementById("leaveTimeTo").value;
+
+    if (!date) { alert("申請日を選択してください"); return; }
+    if (type === "paid_hour" && (!timeFrom || !timeTo)) {
+        alert("時間休の場合は時間帯を入力してください"); return;
+    }
+
+    // 時間休の時間数計算
+    let hours = LEAVE_HOURS[type];
+    if (type === "paid_hour" && timeFrom && timeTo) {
+        const [fh, fm] = timeFrom.split(":").map(Number);
+        const [th, tm] = timeTo.split(":").map(Number);
+        hours = (th * 60 + tm - fh * 60 - fm) / 60;
+        if (hours <= 0) { alert("終了時刻は開始時刻より後にしてください"); return; }
+        if (hours > 8)  { alert("時間休は8時間以内で申請してください"); return; }
+    }
+
+    const payload = {
+        action:      "submitLeave",
+        staffId:     currentStaff.id,
+        staffName:   currentStaff.name,
+        storeName:   currentStore ? currentStore.name : "",
+        leaveType:   type,
+        leaveLabel:  LEAVE_LABELS[type],
+        leaveDate:   date,
+        timeFrom:    timeFrom || "",
+        timeTo:      timeTo   || "",
+        hours:       hours,
+        reason:      reason,
+        appliedAt:   new Date().toISOString(),
+        status:      "pending",
+    };
+
+    try {
+        const res = await fetch(GAS_API_URL, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain" },
+            body: JSON.stringify(payload),
+            redirect: "follow",
+        });
+        const data = await res.json();
+        if (data.ok) {
+            const staffName = currentStaff ? currentStaff.name : "";
+            closeLeaveModal();
+            // 成功オーバーレイ表示（resetForNextStaffより前に名前を取得）
+            const ov = document.getElementById("overlay");
+            ov.classList.remove("error");
+            document.getElementById("overlayIcon").textContent  = "📅";
+            document.getElementById("overlayTitle").textContent = "申請しました";
+            document.getElementById("overlaySub").textContent   = `${LEAVE_LABELS[type]}の申請を送信しました`;
+            document.getElementById("overlayName").textContent  = `${staffName} 様`;
+            ov.classList.add("show");
+            setTimeout(() => {
+                ov.classList.remove("show");
+                resetForNextStaff();
+            }, 2500);
+        } else {
+            alert("申請に失敗しました: " + (data.error || "不明なエラー"));
+        }
+    } catch (err) {
+        alert("通信エラー: " + err.message);
+    }
+}
+
 window.addEventListener("DOMContentLoaded", () => {
     loadFromGAS();
 });
