@@ -1,7 +1,8 @@
-const STAFF_SS_ID = "1UnBwhX8AjBY_sGXNpiYg--3BB2hgh99eu18oL1uOOts";
-const STORE_SS_ID = "1Ozyzi3WqYh7HkYYKBObZr8Mvsm941BQh4XL4w_qp-90";
-const PUNCH_SS_ID = "1NDgvWa7A25If18iklSVkU1F8HnKW3XGcq6O12QmEEx0";
-const SHIFT_SS_ID = "1NOd_wCbSV22mf3nZrt10HcK_SjzAlBc0ebVF59FgOTw";
+const STAFF_SS_ID  = "1UnBwhX8AjBY_sGXNpiYg--3BB2hgh99eu18oL1uOOts";
+const STORE_SS_ID  = "1Ozyzi3WqYh7HkYYKBObZr8Mvsm941BQh4XL4w_qp-90";
+const PUNCH_SS_ID  = "1NDgvWa7A25If18iklSVkU1F8HnKW3XGcq6O12QmEEx0";
+const SHIFT_SS_ID  = "1NOd_wCbSV22mf3nZrt10HcK_SjzAlBc0ebVF59FgOTw";
+const ATTEND_SS_ID = "1XW86MhvDMv5MYVv9aYvwa0ey7g1q7JyefGrcXK9UbPA"; // IDEA NOV 勤怠管理DB
 
 const COL = {
   staffId:0,company:1,store:2,rank:3,empType:4,active:5,
@@ -24,6 +25,10 @@ const LEAVE_HEADERS = [
 // ═══════════════════════════════════════════════════════════════
 function doGet(e) {
   const action = e && e.parameter && e.parameter.action;
+
+  // ── 管理者認証 ──
+  if (action === "adminLogin")  return adminLogin(e);
+  if (action === "adminList")   return getAdminList(e);
 
   // ── シフト管理：保存（GETパラメータ方式でCORSを回避） ──
   if (action === "saveShift")    return saveShiftData(e);
@@ -137,6 +142,100 @@ function doPost(e) {
     return jsonResponse({ ok: false, error: err.message });
   } finally {
     lock.releaseLock();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 👤 管理者認証（IDEA NOV 勤怠管理DB / admin_master シート）
+// ═══════════════════════════════════════════════════════════════
+
+// 管理者マスタシートを自動作成
+function ensureAdminSheet() {
+  const ss    = SpreadsheetApp.openById(ATTEND_SS_ID);
+  let sheet   = ss.getSheetByName("admin_master");
+  if (!sheet) {
+    sheet = ss.insertSheet("admin_master");
+    const headers = ["管理者ID","パスワード","氏名","権限レベル","権限名","担当店舗","メモ"];
+    sheet.appendRow(headers);
+    sheet.setFrozenRows(1);
+    sheet.getRange(1,1,1,headers.length).setFontWeight("bold").setBackground("#2d3748").setFontColor("#ffffff");
+    sheet.setColumnWidth(1, 120);
+    sheet.setColumnWidth(2, 120);
+    sheet.setColumnWidth(3, 120);
+    sheet.setColumnWidth(4, 80);
+    sheet.setColumnWidth(5, 120);
+    sheet.setColumnWidth(6, 200);
+    sheet.setColumnWidth(7, 200);
+
+    // 初期管理者（代表）を追加
+    sheet.appendRow(["admin", "ideanow2026", "脇田 将樹", 1, "SUPER", "全店舗", "代表"]);
+    sheet.getRange(2,1,1,7).setBackground("#f0fff4");
+  }
+  return sheet;
+}
+
+// 管理者ログイン
+function adminLogin(e) {
+  try {
+    const adminId = e.parameter.adminId || "";
+    const pass    = e.parameter.pass    || "";
+
+    if (!adminId || !pass) {
+      return ContentService
+        .createTextOutput(JSON.stringify({ ok: false, error: "IDまたはパスワードが空です" }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    const sheet = ensureAdminSheet();
+    const rows  = sheet.getDataRange().getValues();
+
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      if (String(row[0]).trim() === adminId && String(row[1]).trim() === pass) {
+        const admin = {
+          id:       row[0],
+          name:     row[2],
+          level:    Number(row[3]),
+          role:     row[4],
+          stores:   String(row[5]).trim(), // "全店舗" or "BASSA久米川店,BASSA新所沢店"
+          memo:     row[6],
+        };
+        return ContentService
+          .createTextOutput(JSON.stringify({ ok: true, admin }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+
+    return ContentService
+      .createTextOutput(JSON.stringify({ ok: false, error: "IDまたはパスワードが違います" }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ ok: false, error: err.message }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+// 管理者一覧取得（SUPER権限のみ）
+function getAdminList(e) {
+  try {
+    const sheet = ensureAdminSheet();
+    const rows  = sheet.getDataRange().getValues();
+    const admins = rows.slice(1).map(row => ({
+      id:     row[0],
+      name:   row[2],
+      level:  Number(row[3]),
+      role:   row[4],
+      stores: row[5],
+      memo:   row[6],
+    }));
+    return ContentService
+      .createTextOutput(JSON.stringify({ ok: true, admins }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ ok: false, error: err.message }))
+      .setMimeType(ContentService.MimeType.JSON);
   }
 }
 
