@@ -944,32 +944,98 @@
 
 const GAS_API_URL = "https://script.google.com/macros/s/AKfycbwAjHsIY--ktVQpTfLLNc0RFiWHq1YGvExg1mvhG6iJUX6uapCfqu57dXo3DCis6Bu4/exec";
 
-// 仮の管理者認証（後で本格的に実装）
-const ADMIN_CREDENTIALS = [
-    { id: "admin", pass: "ideanow2026", name: "脇田 将樹" },
-];
-
+// 仮の管理者認証は廃止 → GASで認証
 let currentAdmin = null;
 let storeMaster = [];
 let staffMaster = [];
 let punchLogs = [];
 
-// ─── ログイン ────────────────────────────────────────────────────
-function doLogin() {
+// 権限レベル定義
+const ROLE_LABELS = {
+  1: { name: "SUPER",   label: "代表・副社長",         color: "#e53e3e" },
+  2: { name: "EXEC",    label: "執行役員・部長",        color: "#dd6b20" },
+  3: { name: "MANAGER", label: "マネージャー",          color: "#d69e2e" },
+  4: { name: "OWNER",   label: "FCオーナー",            color: "#38a169" },
+  5: { name: "STORE",   label: "店長",                  color: "#3182ce" },
+};
+
+// ─── ログイン（GAS認証） ─────────────────────────────────────
+async function doLogin() {
     const id   = document.getElementById("loginId").value.trim();
     const pass = document.getElementById("loginPass").value.trim();
-    const found = ADMIN_CREDENTIALS.find(c => c.id === id && c.pass === pass);
-    if (!found) {
-        document.getElementById("loginError").style.display = "block";
+    const errEl = document.getElementById("loginError");
+    const btn   = document.querySelector(".login-btn");
+
+    if (!id || !pass) {
+        errEl.textContent = "IDとパスワードを入力してください";
+        errEl.style.display = "block";
         return;
     }
-    currentAdmin = found;
-    document.getElementById("loginScreen").style.display = "none";
-    document.getElementById("mainScreen").style.display  = "block";
-    document.getElementById("topbarAdmin").textContent = currentAdmin.name;
-    updateTopbarDate();
-    setInterval(updateTopbarDate, 60000);
-    loadMasterData();
+
+    btn.textContent = "認証中...";
+    btn.disabled = true;
+    errEl.style.display = "none";
+
+    try {
+        const params = new URLSearchParams({ action: "adminLogin", adminId: id, pass });
+        const res  = await fetch(`${GAS_API_URL}?${params}`, { redirect: "follow" });
+        const data = await res.json();
+
+        if (!data.ok) {
+            errEl.textContent = data.error || "IDまたはパスワードが違います";
+            errEl.style.display = "block";
+            return;
+        }
+
+        currentAdmin = data.admin;
+        document.getElementById("loginScreen").style.display = "none";
+        document.getElementById("mainScreen").style.display  = "block";
+        document.getElementById("topbarAdmin").textContent =
+            `${currentAdmin.name}（${ROLE_LABELS[currentAdmin.level]?.label || currentAdmin.role}）`;
+        updateTopbarDate();
+        setInterval(updateTopbarDate, 60000);
+        loadMasterData();
+
+    } catch (err) {
+        errEl.textContent = "接続エラー: " + err.message;
+        errEl.style.display = "block";
+    } finally {
+        btn.textContent = "ログイン";
+        btn.disabled = false;
+    }
+}
+
+// ─── 権限チェック ─────────────────────────────────────────────
+function getAccessibleStores() {
+    if (!currentAdmin) return [];
+    if (currentAdmin.level <= 2) return null; // nullは全店舗
+    const stores = String(currentAdmin.stores || "").split(",").map(s => s.trim()).filter(Boolean);
+    return stores;
+}
+
+function filterByAccess(storeName) {
+    const accessible = getAccessibleStores();
+    if (!accessible) return true;
+    return accessible.some(s => storeName.includes(s) || s.includes(storeName));
+}
+
+function applyAccessFilter() {
+    const accessible = getAccessibleStores();
+    if (!accessible) return; // 全店舗アクセス可はそのまま
+    // 店舗セレクタを担当店舗のみに絞る
+    const selectors = ["dailyStore","monthlyStore","leaveStore","exportStore","approveStore"];
+    selectors.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        Array.from(el.options).forEach(opt => {
+            if (opt.value === "") return; // 「全店舗」オプションは除外
+            if (!filterByAccess(opt.value)) opt.remove();
+        });
+        // 担当店舗を自動選択
+        if (accessible.length === 1 && el.options.length > 1) {
+            el.value = accessible[0];
+        }
+    });
 }
 
 function doLogout() {
@@ -1035,6 +1101,7 @@ async function loadMasterData() {
         })).filter(s => s.name && s.active !== "否" && s.active !== "退職" && s.active !== "×" && !s.retire);
 
         populateStoreSelectors();
+        applyAccessFilter();
         loadDashboardAlerts();
 
     } catch (err) {
