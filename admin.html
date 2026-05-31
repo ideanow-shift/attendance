@@ -1350,9 +1350,10 @@ function calcPaidLeave(joinDateStr) {
     return { granted, nextDate: nextStr, tenure };
 }
 
-function loadLeaveData() {
+async function loadLeaveData() {
     const store = document.getElementById("leaveStore").value;
     const tbody = document.getElementById("leaveTableBody");
+    tbody.innerHTML = `<tr><td colspan="7" class="loading"><div class="spinner"></div>集計中...</td></tr>`;
 
     const targets = staffMaster.filter(s => !store || s.store.includes(store));
     if (targets.length === 0) {
@@ -1360,9 +1361,27 @@ function loadLeaveData() {
         return;
     }
 
+    // GASから承認済み有給申請を取得して取得日数を集計
+    let takenMap = {}; // { staffName: 取得日数 }
+    try {
+        const params = new URLSearchParams({ action: "leaveRequests", status: "approved" });
+        const res    = await fetch(`${GAS_API_URL}?${params}`, { redirect: "follow" });
+        const data   = await res.json();
+        if (data.ok) {
+            (data.leaves || []).forEach(l => {
+                if (!l.leaveType || l.leaveType.includes("paid") || l.leaveLabel?.includes("有給")) {
+                    const key = l.staffName;
+                    takenMap[key] = (takenMap[key] || 0) + 1;
+                }
+            });
+        }
+    } catch (err) {
+        console.warn("[有給取得数の取得失敗]", err);
+    }
+
     tbody.innerHTML = targets.map(s => {
         const { granted, nextDate, tenure } = calcPaidLeave(s.joinDate);
-        const taken = 0; // 後でGASから取得
+        const taken  = takenMap[s.name] || 0;
         const remain = granted - taken;
         return `<tr>
             <td>${s.name}</td>
