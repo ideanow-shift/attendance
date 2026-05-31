@@ -1022,17 +1022,22 @@ function filterByAccess(storeName) {
 function applyAccessFilter() {
     const accessible = getAccessibleStores();
     if (!accessible) return; // 全店舗アクセス可はそのまま
-    // 店舗セレクタを担当店舗のみに絞る
+
+    // レベル3以上は「全店舗」オプションを非表示
     const selectors = ["dailyStore","monthlyStore","leaveStore","exportStore","approveStore"];
     selectors.forEach(id => {
         const el = document.getElementById(id);
         if (!el) return;
         Array.from(el.options).forEach(opt => {
-            if (opt.value === "") return; // 「全店舗」オプションは除外
+            if (opt.value === "") {
+                // 「全店舗」オプションを削除
+                opt.remove();
+                return;
+            }
             if (!filterByAccess(opt.value)) opt.remove();
         });
         // 担当店舗を自動選択
-        if (accessible.length === 1 && el.options.length > 1) {
+        if (accessible.length >= 1 && el.options.length >= 1) {
             el.value = accessible[0];
         }
     });
