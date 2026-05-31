@@ -837,11 +837,41 @@
 
         <!-- 申請承認 -->
         <div class="page" id="page-approve">
+            <div class="store-selector-bar">
+                <label>店舗</label>
+                <select id="approveStore"><option value="">全店舗</option></select>
+                <label>ステータス</label>
+                <select id="approveStatus">
+                    <option value="pending">未承認</option>
+                    <option value="approved">承認済み</option>
+                    <option value="rejected">却下</option>
+                    <option value="">全て</option>
+                </select>
+                <button class="btn-search" onclick="loadApproveData()">表示</button>
+            </div>
             <div class="table-card">
                 <div class="table-card-header">
                     <div class="table-card-title">休暇申請一覧</div>
                 </div>
-                <div class="empty-state">申請承認機能は近日実装予定です</div>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>申請日時</th>
+                                <th>氏名</th>
+                                <th>店舗</th>
+                                <th>休暇種別</th>
+                                <th>申請日</th>
+                                <th>理由</th>
+                                <th>ステータス</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="approveTableBody">
+                            <tr><td colspan="8" class="empty-state">「表示」を押してください</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
@@ -1017,7 +1047,7 @@ async function loadMasterData() {
 function populateStoreSelectors() {
     const options = `<option value="">全店舗</option>` +
         storeMaster.map(s => `<option value="${s.name}">${s.name}</option>`).join("");
-    ["dailyStore","monthlyStore","leaveStore","exportStore"].forEach(id => {
+    ["dailyStore","monthlyStore","leaveStore","exportStore","approveStore"].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.innerHTML = options;
     });
@@ -1348,30 +1378,200 @@ function loadLeaveData() {
     }).join("");
 }
 
+// ─── 申請承認 ────────────────────────────────────────────────────
+async function loadApproveData() {
+    const store  = document.getElementById("approveStore").value;
+    const status = document.getElementById("approveStatus").value;
+    const tbody  = document.getElementById("approveTableBody");
+    tbody.innerHTML = `<tr><td colspan="8" class="loading"><div class="spinner"></div>読み込み中...</td></tr>`;
+
+    try {
+        const params = new URLSearchParams({ action: "leaveRequests", store, status });
+        const res    = await fetch(`${GAS_API_URL}?${params}`, { redirect: "follow" });
+        const data   = await res.json();
+        if (!data.ok) throw new Error(data.error);
+
+        const leaves = data.leaves || [];
+        if (leaves.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="8" class="empty-state">申請がありません</td></tr>`;
+            return;
+        }
+
+        const statusLabel = { pending: "⏳ 未承認", approved: "✅ 承認済み", rejected: "❌ 却下" };
+        const statusColor = { pending: "var(--warning)", approved: "var(--kot-green)", rejected: "var(--danger)" };
+
+        tbody.innerHTML = leaves.map(l => `
+            <tr>
+                <td>${(l.appliedAt || "").slice(0,10)}</td>
+                <td>${l.staffName || "-"}</td>
+                <td>${l.storeName || "-"}</td>
+                <td>${l.leaveLabel || l.leaveType || "-"}</td>
+                <td>${l.leaveDate || "-"}</td>
+                <td>${l.reason || "-"}</td>
+                <td style="font-weight:bold; color:${statusColor[l.status] || "var(--text-muted)"}">
+                    ${statusLabel[l.status] || l.status}
+                </td>
+                <td>
+                    ${l.status === "pending" ? `
+                        <button class="btn-edit" style="background:var(--kot-green); color:white;" onclick="approveLeave('${l.leaveId}')">✅ 承認</button>
+                        <button class="btn-edit" style="background:var(--danger); color:white; margin-left:4px;" onclick="rejectLeave('${l.leaveId}')">❌ 却下</button>
+                    ` : "-"}
+                </td>
+            </tr>
+        `).join("");
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="8" class="empty-state">エラー: ${err.message}</td></tr>`;
+    }
+}
+
+async function approveLeave(leaveId) {
+    if (!confirm("この申請を承認しますか？")) return;
+    try {
+        const res  = await fetch(GAS_API_URL, {
+            method: "POST",
+            body: JSON.stringify({ action: "approveLeave", leaveId, approvedBy: currentAdmin?.name || "管理者" }),
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error);
+        alert("承認しました");
+        loadApproveData();
+    } catch (err) {
+        alert("エラー: " + err.message);
+    }
+}
+
+async function rejectLeave(leaveId) {
+    if (!confirm("この申請を却下しますか？")) return;
+    try {
+        const res  = await fetch(GAS_API_URL, {
+            method: "POST",
+            body: JSON.stringify({ action: "rejectLeave", leaveId, approvedBy: currentAdmin?.name || "管理者" }),
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error);
+        alert("却下しました");
+        loadApproveData();
+    } catch (err) {
+        alert("エラー: " + err.message);
+    }
+}
+
 // ─── CSV出力 ─────────────────────────────────────────────────────
 function exportDailyCSV() {
-    alert("日別データのCSV出力は実装予定です");
+    exportDailyCSVAll();
+}
+
+async function exportDailyCSVAll() {
+    const store = document.getElementById("exportStore")?.value ||
+                  document.getElementById("dailyStore")?.value || "";
+    const date  = document.getElementById("exportMonth")?.value ||
+                  document.getElementById("dailyDate")?.value || "";
+    if (!date) { alert("日付・年月を選択してください"); return; }
+
+    try {
+        const [y, m] = date.split("-");
+        const fromDate = `${y}-${m}-01`;
+        const lastDay  = new Date(Number(y), Number(m), 0).getDate();
+        const toDate   = `${y}-${m}-${String(lastDay).padStart(2,"0")}`;
+
+        const params = new URLSearchParams({ action: "punchLogs", from: fromDate, to: toDate });
+        const res    = await fetch(`${GAS_API_URL}?${params}`, { redirect: "follow" });
+        const data   = await res.json();
+        if (!data.ok) throw new Error(data.error);
+
+        const logs = (data.logs || []).filter(log =>
+            !store || (log.storeName || "").includes(store)
+        );
+
+        let csv = "\uFEFF日付,氏名,店舗,打刻種別,時刻,雇用形態\n";
+        logs.forEach(log => {
+            csv += `${log.date},${log.staffName},${log.storeName},${log.typeLabel || log.punchType},${log.time},${log.empType}\n`;
+        });
+        downloadCSV(csv, `日別打刻データ_${store || "全店舗"}_${y}${m}.csv`);
+    } catch (err) {
+        alert("エラー: " + err.message);
+    }
 }
 
 function exportMonthlyCSV() {
-    alert("月別データのCSV出力は実装予定です");
+    exportMonthlyCSVAll();
+}
+
+async function exportMonthlyCSVAll() {
+    const store = document.getElementById("exportStore")?.value ||
+                  document.getElementById("monthlyStore")?.value || "";
+    const month = document.getElementById("exportMonth")?.value ||
+                  document.getElementById("monthlyMonth")?.value || "";
+    if (!month) { alert("年月を選択してください"); return; }
+
+    try {
+        const [y, m] = month.split("-");
+        const fromDate = `${y}-${m}-01`;
+        const lastDay  = new Date(Number(y), Number(m), 0).getDate();
+        const toDate   = `${y}-${m}-${String(lastDay).padStart(2,"0")}`;
+
+        const params = new URLSearchParams({ action: "punchLogs", from: fromDate, to: toDate });
+        const res    = await fetch(`${GAS_API_URL}?${params}`, { redirect: "follow" });
+        const data   = await res.json();
+        if (!data.ok) throw new Error(data.error);
+
+        const logs = (data.logs || []).filter(log =>
+            !store || (log.storeName || "").includes(store)
+        );
+
+        // スタッフごとに集計
+        const staffMap = {};
+        logs.forEach(log => {
+            const key = log.staffId || log.staffName;
+            if (!staffMap[key]) {
+                staffMap[key] = { name: log.staffName, empType: log.empType, store: log.storeName, punches: [] };
+            }
+            staffMap[key].punches.push(log);
+        });
+
+        const targets = staffMaster.filter(s => !store || s.store.includes(store));
+
+        let csv = "\uFEFF氏名,店舗,雇用形態,出勤日数,総労働時間\n";
+        targets.forEach(s => {
+            const d = staffMap[s.staffId] || staffMap[s.name] || null;
+            if (!d) { csv += `${s.name},${s.store},${s.empType || ""},0日,-\n`; return; }
+
+            const clockIns  = d.punches.filter(p => p.punchType === "clockIn");
+            const clockOuts = d.punches.filter(p => p.punchType === "clockOut");
+            const workDays  = clockIns.length;
+
+            let totalMinutes = 0;
+            clockIns.forEach((ci, idx) => {
+                const co = clockOuts[idx];
+                if (!co) return;
+                const inT  = ci.time  ? ci.time.split(":").map(Number)  : null;
+                const outT = co.time ? co.time.split(":").map(Number) : null;
+                if (inT && outT) totalMinutes += (outT[0]*60+outT[1]) - (inT[0]*60+inT[1]);
+            });
+            const totalH = Math.floor(totalMinutes / 60);
+            const totalM = totalMinutes % 60;
+            const totalStr = totalMinutes > 0 ? `${totalH}時間${totalM}分` : "-";
+            csv += `${s.name},${s.store},${s.empType || ""},${workDays}日,${totalStr}\n`;
+        });
+        downloadCSV(csv, `月別集計_${store || "全店舗"}_${y}${m}.csv`);
+    } catch (err) {
+        alert("エラー: " + err.message);
+    }
 }
 
 function exportLeaveCSV() {
-    const store = document.getElementById("leaveStore")?.value || "";
+    const store = document.getElementById("leaveStore")?.value ||
+                  document.getElementById("exportStore")?.value || "";
     const targets = staffMaster.filter(s => !store || s.store.includes(store));
     if (targets.length === 0) { alert("先にデータを表示してください"); return; }
 
-    let csv = "\uFEFF氏名,入社日,勤続年数,付与日数,取得日数,残日数,次回付与日\n";
+    let csv = "\uFEFF氏名,店舗,入社日,勤続年数,付与日数,取得日数,残日数,次回付与日\n";
     targets.forEach(s => {
         const { granted, nextDate, tenure } = calcPaidLeave(s.joinDate);
-        csv += `${s.name},${s.joinDate || ""},${tenure},${granted},0,${granted},${nextDate}\n`;
+        csv += `${s.name},${s.store},${s.joinDate || ""},${tenure},${granted},0,${granted},${nextDate}\n`;
     });
     downloadCSV(csv, `有給管理_${store || "全店舗"}.csv`);
 }
-
-function exportDailyCSVAll() { alert("日別データのCSV出力は実装予定です"); }
-function exportMonthlyCSVAll() { alert("月別集計のCSV出力は実装予定です"); }
 
 function downloadCSV(content, filename) {
     const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
