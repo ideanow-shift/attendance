@@ -719,6 +719,9 @@
             <div class="nav-item" onclick="showPage('export')">
                 <span class="nav-icon">📥</span> CSV出力
             </div>
+            <div class="nav-item" id="navSettings" onclick="showPage('settings')" style="display:none;">
+                <span class="nav-icon">⚙️</span> 設定
+            </div>
         </nav>
         <div class="sidebar-footer">
             <button class="logout-btn" onclick="doLogout()">ログアウト</button>
@@ -963,6 +966,72 @@
             </div>
         </div>
 
+        <!-- 設定（管理者・スタッフ管理） -->
+        <div class="page" id="page-settings">
+            <!-- 管理者管理 (#5・#6) -->
+            <div class="table-card" style="margin-bottom:20px;">
+                <div class="table-card-header">
+                    <div class="table-card-title">👤 管理者管理</div>
+                </div>
+                <div style="padding:20px; display:flex; flex-direction:column; gap:16px;">
+                    <div style="font-size:13px; color:#4a5568;">
+                        管理者（店長等）の新規登録・削除を行います。<b>担当店舗</b>が、その管理者の閲覧範囲と<b>申請承認の対象店舗（承認者の紐づけ）</b>になります。
+                    </div>
+                    <div class="store-selector-bar" style="flex-wrap:wrap; gap:10px;">
+                        <input type="text" id="newAdminId"    placeholder="管理者ID" style="width:120px;">
+                        <input type="text" id="newAdminPass"  placeholder="パスワード" style="width:120px;">
+                        <input type="text" id="newAdminName"  placeholder="氏名" style="width:120px;">
+                        <select id="newAdminLevel">
+                            <option value="2">EXEC（役員）</option>
+                            <option value="3">MANAGER（マネージャー）</option>
+                            <option value="4">OWNER（FCオーナー）</option>
+                            <option value="5" selected>STORE（店長）</option>
+                        </select>
+                        <select id="newAdminStore"><option value="">担当店舗</option></select>
+                        <button class="btn-search" onclick="addAdminUI()">＋ 管理者を追加</button>
+                    </div>
+                    <div class="table-wrapper">
+                        <table>
+                            <thead>
+                                <tr><th>管理者ID</th><th>氏名</th><th>権限</th><th>担当店舗</th><th>操作</th></tr>
+                            </thead>
+                            <tbody id="adminTableBody">
+                                <tr><td colspan="5" class="empty-state">読み込み中...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- スタッフ管理 (#9) -->
+            <div class="table-card">
+                <div class="table-card-header">
+                    <div class="table-card-title">🧑‍🤝‍🧑 スタッフ管理</div>
+                </div>
+                <div style="padding:20px; display:flex; flex-direction:column; gap:16px;">
+                    <div style="font-size:13px; color:#4a5568;">
+                        スタッフの新規登録と退職処理を行います。退職処理は行を削除せず「退職」として記録し、過去の打刻履歴は保全されます。
+                    </div>
+                    <div class="store-selector-bar" style="flex-wrap:wrap; gap:10px;">
+                        <input type="text" id="newStaffId"    placeholder="社員番号" style="width:100px;">
+                        <input type="text" id="newStaffName"  placeholder="氏名" style="width:120px;">
+                        <select id="newStaffStore"><option value="">店舗</option></select>
+                        <input type="text" id="newStaffRank"    placeholder="役職" style="width:90px;">
+                        <input type="text" id="newStaffEmpType" placeholder="雇用形態" style="width:90px;">
+                        <input type="date" id="newStaffJoin" title="入社日">
+                        <input type="text" id="newStaffPin"   placeholder="PIN" style="width:80px;">
+                        <button class="btn-search" onclick="addStaffUI()">＋ スタッフを追加</button>
+                    </div>
+                    <div class="store-selector-bar" style="flex-wrap:wrap; gap:10px; background:#fff5f5;">
+                        <label>退職処理</label>
+                        <select id="retireStaffSelect"><option value="">スタッフを選択</option></select>
+                        <input type="date" id="retireDate" title="退職日">
+                        <button class="btn-csv" style="color:#c53030; border-color:#feb2b2;" onclick="retireStaffUI()">退職処理</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
     </div><!-- /main-content -->
 </div><!-- /mainScreen -->
 
@@ -1060,6 +1129,9 @@ async function doLogin() {
             `${currentAdmin.name}（${ROLE_LABELS[currentAdmin.level]?.label || currentAdmin.role}）`;
         updateTopbarDate();
         setInterval(updateTopbarDate, 60000);
+        // 設定（管理者・スタッフ管理）は上位権限のみ（SUPER/EXEC = level 1〜2）
+        const navSettings = document.getElementById("navSettings");
+        if (navSettings) navSettings.style.display = (Number(currentAdmin.level) <= 2) ? "" : "none";
         loadMasterData();
 
     } catch (err) {
@@ -1133,6 +1205,7 @@ const pageTitles = {
     leave:     "有給・休暇管理",
     approve:   "申請承認",
     export:    "CSV出力",
+    settings:  "設定（管理者・スタッフ管理）",
 };
 
 function showPage(name) {
@@ -1141,6 +1214,7 @@ function showPage(name) {
     document.getElementById("page-" + name).classList.add("active");
     document.querySelector(`.nav-item[onclick="showPage('${name}')"]`).classList.add("active");
     document.getElementById("pageTitle").textContent = pageTitles[name] || name;
+    if (name === "settings") loadSettingsData();
 }
 
 // ─── マスタデータ取得 ────────────────────────────────────────────
@@ -1175,6 +1249,7 @@ async function loadMasterData() {
         populateStoreSelectors();
         applyAccessFilter();
         populateTimecardStaff();
+        populateSettingsSelectors();
         loadDashboardAlerts();
 
     } catch (err) {
@@ -1592,6 +1667,113 @@ async function loadTimecard() {
 
 function printTimecard() {
     window.print();
+}
+
+// ─── 設定：管理者管理（#5・#6）・スタッフ管理（#9） ──────────────
+function populateSettingsSelectors() {
+    const storeOpts = storeMaster.map(s => `<option value="${s.name}">${s.name}</option>`).join("");
+    const adminStore = document.getElementById("newAdminStore");
+    if (adminStore) adminStore.innerHTML = `<option value="">担当店舗</option><option value="全店舗">全店舗</option>` + storeOpts;
+    const staffStore = document.getElementById("newStaffStore");
+    if (staffStore) staffStore.innerHTML = `<option value="">店舗</option>` + storeOpts;
+    const retireSel = document.getElementById("retireStaffSelect");
+    if (retireSel) {
+        retireSel.innerHTML = `<option value="">スタッフを選択</option>` +
+            staffMaster.map(s => `<option value="${s.staffId}">${s.name}（${s.store}）</option>`).join("");
+    }
+}
+
+async function loadSettingsData() {
+    populateSettingsSelectors();
+    const tbody = document.getElementById("adminTableBody");
+    tbody.innerHTML = `<tr><td colspan="5" class="loading"><div class="spinner"></div>読み込み中...</td></tr>`;
+    try {
+        const res  = await fetch(`${GAS_API_URL}?action=adminList`, { redirect: "follow" });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error);
+        const admins = data.admins || [];
+        if (admins.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5" class="empty-state">管理者がいません</td></tr>`;
+            return;
+        }
+        tbody.innerHTML = admins.map(a => `<tr>
+            <td>${a.id}</td>
+            <td>${a.name || "-"}</td>
+            <td>${a.role || "-"}（Lv${a.level}）</td>
+            <td>${a.stores || "-"}</td>
+            <td>${a.id === "admin"
+                ? '<span style="color:#a0aec0;font-size:12px;">初期管理者</span>'
+                : `<button class="btn-edit" onclick="deleteAdminUI('${a.id}')">🗑️ 削除</button>`}</td>
+        </tr>`).join("");
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="5" class="empty-state">エラー: ${err.message}</td></tr>`;
+    }
+}
+
+async function postAction(payload, okMsg) {
+    const res  = await fetch(GAS_API_URL, { method: "POST", body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error);
+    if (okMsg) alert(data.message || okMsg);
+    return data;
+}
+
+async function addAdminUI() {
+    const adminId = document.getElementById("newAdminId").value.trim();
+    const pass    = document.getElementById("newAdminPass").value.trim();
+    const name    = document.getElementById("newAdminName").value.trim();
+    const level   = document.getElementById("newAdminLevel").value;
+    const stores  = document.getElementById("newAdminStore").value;
+    const roleMap = { "2":"EXEC", "3":"MANAGER", "4":"OWNER", "5":"STORE" };
+    if (!adminId || !pass) { alert("管理者IDとパスワードを入力してください"); return; }
+    try {
+        await postAction({ action:"addAdmin", adminId, pass, name, level, role: roleMap[level] || "STORE", stores }, "管理者を登録しました");
+        ["newAdminId","newAdminPass","newAdminName"].forEach(id => document.getElementById(id).value = "");
+        loadSettingsData();
+    } catch (err) { alert("エラー: " + err.message); }
+}
+
+async function deleteAdminUI(adminId) {
+    if (!confirm(`管理者「${adminId}」を削除しますか？`)) return;
+    try {
+        await postAction({ action:"deleteAdmin", adminId }, "管理者を削除しました");
+        loadSettingsData();
+    } catch (err) { alert("エラー: " + err.message); }
+}
+
+async function addStaffUI() {
+    const staffId = document.getElementById("newStaffId").value.trim();
+    const name    = document.getElementById("newStaffName").value.trim();
+    if (!staffId || !name) { alert("社員番号と氏名を入力してください"); return; }
+    const payload = {
+        action:   "addStaff",
+        staffId,
+        name,
+        store:    document.getElementById("newStaffStore").value,
+        rank:     document.getElementById("newStaffRank").value.trim(),
+        empType:  document.getElementById("newStaffEmpType").value.trim(),
+        joinDate: document.getElementById("newStaffJoin").value,
+        pin:      document.getElementById("newStaffPin").value.trim(),
+    };
+    try {
+        await postAction(payload, "スタッフを登録しました");
+        ["newStaffId","newStaffName","newStaffRank","newStaffEmpType","newStaffPin"].forEach(id => document.getElementById(id).value = "");
+        await loadMasterData();   // マスタ再取得（各セレクタへ反映）
+        loadSettingsData();
+    } catch (err) { alert("エラー: " + err.message); }
+}
+
+async function retireStaffUI() {
+    const staffId    = document.getElementById("retireStaffSelect").value;
+    const retireDate = document.getElementById("retireDate").value;
+    if (!staffId) { alert("退職するスタッフを選択してください"); return; }
+    const label = document.getElementById("retireStaffSelect").selectedOptions[0].textContent;
+    if (!confirm(`${label} を退職処理します。よろしいですか？`)) return;
+    try {
+        await postAction({ action:"retireStaff", staffId, retireDate }, "退職処理を行いました");
+        await loadMasterData();
+        loadSettingsData();
+    } catch (err) { alert("エラー: " + err.message); }
 }
 
 // ─── 有給管理 ────────────────────────────────────────────────────

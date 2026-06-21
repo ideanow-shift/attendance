@@ -95,6 +95,12 @@ function doPost(e) {
     if (payload.action === "approveLeave") return approveLeave(payload);
     if (payload.action === "rejectLeave")  return rejectLeave(payload);
 
+    // ── 管理者・スタッフ管理（設定画面） ──
+    if (payload.action === "addAdmin")     return addAdmin(payload);
+    if (payload.action === "deleteAdmin")  return deleteAdmin(payload);
+    if (payload.action === "addStaff")     return addStaff(payload);
+    if (payload.action === "retireStaff")  return retireStaff(payload);
+
     if (!payload.staffId || !payload.punchType) {
       return jsonResponse({ ok: false, error: "必須フィールドが不足しています" });
     }
@@ -237,6 +243,98 @@ function getAdminList(e) {
       .createTextOutput(JSON.stringify({ ok: false, error: err.message }))
       .setMimeType(ContentService.MimeType.JSON);
   }
+}
+
+// 管理者を新規登録（設定画面 / #5・#6）
+// payload: { adminId, pass, name, level, role, stores, memo }
+// stores = 担当店舗（カンマ区切り）＝この管理者が承認できる店舗の紐づけ（#6）
+function addAdmin(payload) {
+  const sheet = ensureAdminSheet();
+  const rows  = sheet.getDataRange().getValues();
+  const id    = String(payload.adminId || "").trim();
+  if (!id || !String(payload.pass || "").trim()) {
+    return jsonResponse({ ok: false, error: "管理者IDとパスワードは必須です" });
+  }
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === id) {
+      return jsonResponse({ ok: false, error: "同じ管理者IDが既に存在します" });
+    }
+  }
+  sheet.appendRow([
+    id,
+    String(payload.pass),
+    payload.name   || "",
+    Number(payload.level) || 5,
+    payload.role   || "STORE",
+    payload.stores || "",
+    payload.memo   || "",
+  ]);
+  return jsonResponse({ ok: true, message: "管理者を登録しました" });
+}
+
+// 管理者を削除（設定画面 / #5）
+function deleteAdmin(payload) {
+  const id = String(payload.adminId || "").trim();
+  if (id === "admin") {
+    return jsonResponse({ ok: false, error: "初期管理者（admin）は削除できません" });
+  }
+  const sheet = ensureAdminSheet();
+  const rows  = sheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === id) {
+      sheet.deleteRow(i + 1);
+      return jsonResponse({ ok: true, message: "管理者を削除しました" });
+    }
+  }
+  return jsonResponse({ ok: false, error: "対象の管理者が見つかりません" });
+}
+
+// スタッフを新規登録（設定画面 / #9）
+// payload: { staffId, company, store, rank, empType, name, kanaLast, kanaFirst, birth, joinDate, pin }
+function addStaff(payload) {
+  const sheet   = SpreadsheetApp.openById(STAFF_SS_ID).getSheets()[0];
+  const rows    = sheet.getDataRange().getValues();
+  const staffId = String(payload.staffId || "").trim();
+  if (!staffId || !String(payload.name || "").trim()) {
+    return jsonResponse({ ok: false, error: "社員番号と氏名は必須です" });
+  }
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][COL.staffId]).trim() === staffId) {
+      return jsonResponse({ ok: false, error: "同じ社員番号が既に存在します" });
+    }
+  }
+  const width = Math.max(sheet.getLastColumn(), COL.pin + 1);
+  const row   = new Array(width).fill("");
+  row[COL.staffId]   = staffId;
+  row[COL.company]   = payload.company   || "";
+  row[COL.store]     = payload.store     || "";
+  row[COL.rank]      = payload.rank      || "";
+  row[COL.empType]   = payload.empType   || "";
+  row[COL.active]    = "在職";
+  row[COL.name]      = payload.name      || "";
+  row[COL.kanaLast]  = payload.kanaLast  || "";
+  row[COL.kanaFirst] = payload.kanaFirst || "";
+  row[COL.birth]     = payload.birth     || "";
+  row[COL.joinDate]  = payload.joinDate  || "";
+  row[COL.pin]       = String(payload.pin || "");
+  sheet.appendRow(row);
+  return jsonResponse({ ok: true, message: "スタッフを登録しました" });
+}
+
+// スタッフを退職処理（設定画面 / #9）
+// 行は削除せず在職列を「退職」にして退職日を記録（履歴・打刻ログ保全のためソフト削除）
+function retireStaff(payload) {
+  const sheet   = SpreadsheetApp.openById(STAFF_SS_ID).getSheets()[0];
+  const rows    = sheet.getDataRange().getValues();
+  const staffId = String(payload.staffId || "").trim();
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][COL.staffId]).trim() === staffId) {
+      sheet.getRange(i + 1, COL.active + 1).setValue("退職");
+      sheet.getRange(i + 1, COL.retire + 1).setValue(payload.retireDate || formatDate(new Date()));
+      return jsonResponse({ ok: true, message: "退職処理を行いました" });
+    }
+  }
+  return jsonResponse({ ok: false, error: "対象スタッフが見つかりません" });
 }
 
 // ═══════════════════════════════════════════════════════════════
