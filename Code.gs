@@ -104,19 +104,29 @@ function doPost(e) {
     if (!payload.staffId || !payload.punchType) {
       return jsonResponse({ ok: false, error: "必須フィールドが不足しています" });
     }
-    if (!payload.auth || !payload.auth.testMode) {
+    // 打刻はサーバ側で必ず PIN照合＋在職確認を行う
+    // （#3: testModeによる認証バイパスを廃止／#5: 在職チェックをサーバ側に追加）
+    {
       const staffSheet = SpreadsheetApp.openById(STAFF_SS_ID).getSheets()[0];
       const staffData  = staffSheet.getDataRange().getValues();
-      let pinOk = false;
+      let found = false, pinOk = false, employed = false;
       for (let i = 1; i < staffData.length; i++) {
         const row = staffData[i];
         if (String(row[COL.staffId]).trim() === String(payload.staffId).trim()) {
+          found = true;
           const storedPin = String(row[COL.pin] || "").trim();
           pinOk = (storedPin !== "" && storedPin === String(payload.pin || "").trim());
+          const active = String(row[COL.active] || "").trim();
+          const retire = String(row[COL.retire] || "").trim();
+          const inactive = (active === "否" || active === "退職" || active === "×" || active === "0") ||
+                           (retire !== "" && retire !== "0" && retire !== "-");
+          employed = !inactive;
           break;
         }
       }
-      if (!pinOk) return jsonResponse({ ok: false, error: "PIN認証失敗" });
+      if (!found)    return jsonResponse({ ok: false, error: "社員番号が見つかりません" });
+      if (!employed) return jsonResponse({ ok: false, error: "在職中のスタッフではありません" });
+      if (!pinOk)    return jsonResponse({ ok: false, error: "PIN認証失敗" });
     }
     const punchSheet = ensurePunchSheet();
     const existingData = punchSheet.getDataRange().getValues();
@@ -173,9 +183,11 @@ function ensureAdminSheet() {
     sheet.setColumnWidth(6, 200);
     sheet.setColumnWidth(7, 200);
 
-    // 初期管理者（代表）を追加
-    sheet.appendRow(["admin", "ideanow2026", "脇田 将樹", 1, "SUPER", "全店舗", "代表"]);
-    sheet.getRange(2,1,1,7).setBackground("#f0fff4");
+    // セキュリティ #4：初期パスワードをコードに埋め込まない。
+    // 初回作成時は SUPER 管理者の「枠」だけ作り、パスワードは手動でシートに設定する。
+    // （公開リポジトリに既定の管理者ID/パスワードが残らないようにするため）
+    sheet.appendRow(["admin", "", "脇田 将樹", 1, "SUPER", "全店舗", "初回：admin_masterシートにパスワードを手入力してください"]);
+    sheet.getRange(2,1,1,7).setBackground("#fff5f5");
   }
   return sheet;
 }
