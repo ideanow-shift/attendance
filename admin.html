@@ -706,6 +706,9 @@
             <div class="nav-item" onclick="showPage('timecard')">
                 <span class="nav-icon">📇</span> タイムカード
             </div>
+            <div class="nav-item" onclick="showPage('analysis')">
+                <span class="nav-icon">📈</span> データ分析
+            </div>
 
             <div class="nav-section-label">休暇管理</div>
             <div class="nav-item" onclick="showPage('leave')">
@@ -755,6 +758,11 @@
                     <div class="dash-card-icon">📇</div>
                     <div class="dash-card-title">タイムカード</div>
                     <div class="dash-card-desc">個人別の出退勤明細をPDF出力</div>
+                </div>
+                <div class="dash-card" onclick="showPage('analysis')">
+                    <div class="dash-card-icon">📈</div>
+                    <div class="dash-card-title">データ分析</div>
+                    <div class="dash-card-desc">残業時間・有給取得率を集計</div>
                 </div>
                 <div class="dash-card" onclick="showPage('leave')">
                     <div class="dash-card-icon">🌴</div>
@@ -867,6 +875,48 @@
             <div class="table-card">
                 <div class="timecard-sheet" id="timecardSheet">
                     <div class="empty-state" style="padding:40px;">店舗・スタッフ・年月を選択して「表示」を押してください</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- データ分析（残業時間・有給取得率） -->
+        <div class="page" id="page-analysis">
+            <div class="store-selector-bar tc-controls">
+                <label>店舗</label>
+                <select id="analysisStore"><option>読み込み中...</option></select>
+                <label>年月</label>
+                <input type="month" id="analysisMonth">
+                <button class="btn-search" onclick="loadAnalysis()">表示</button>
+                <button class="btn-csv" id="analysisCsvBtn" onclick="exportAnalysisCSV()" style="display:none;">📥 CSV出力</button>
+                <button class="btn-csv" id="analysisPrintBtn" onclick="window.print()" style="display:none;">🖨️ 印刷</button>
+            </div>
+            <div id="analysisSummary" style="display:none; gap:12px; padding:0 0 16px; flex-wrap:wrap;"></div>
+            <div class="table-card">
+                <div class="table-card-header">
+                    <div class="table-card-title" id="analysisTableTitle">残業時間・有給取得率</div>
+                </div>
+                <div class="table-wrapper">
+                    <table class="timecard-table">
+                        <thead>
+                            <tr>
+                                <th>氏名</th>
+                                <th>雇用形態</th>
+                                <th>出勤日数</th>
+                                <th>総労働時間</th>
+                                <th>残業（8h超目安）</th>
+                                <th>有給付与</th>
+                                <th>有給取得</th>
+                                <th>取得率</th>
+                            </tr>
+                        </thead>
+                        <tbody id="analysisTableBody">
+                            <tr><td colspan="8" class="empty-state">店舗・年月を選択して「表示」を押してください</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="tc-meta" style="padding:12px 16px; color:#718096; font-size:12px;">
+                    ※「残業」は1日の実働が8時間を超えた分の当月合計（目安）です。雇用形態別の所定労働時間（#10）を設定すると精緻化できます。<br>
+                    ※「有給付与・取得・取得率」は年間ベース（取得率＝承認済み有給取得日数 ÷ 付与日数）。
                 </div>
             </div>
         </div>
@@ -1162,7 +1212,7 @@ function applyAccessFilter() {
     if (!accessible) return; // 全店舗アクセス可はそのまま
 
     // レベル3以上は「全店舗」オプションを非表示
-    const selectors = ["dailyStore","monthlyStore","timecardStore","leaveStore","exportStore","approveStore"];
+    const selectors = ["dailyStore","monthlyStore","timecardStore","analysisStore","leaveStore","exportStore","approveStore"];
     selectors.forEach(id => {
         const el = document.getElementById(id);
         if (!el) return;
@@ -1202,6 +1252,7 @@ const pageTitles = {
     daily:     "日別データ",
     monthly:   "月別データ",
     timecard:  "タイムカード",
+    analysis:  "データ分析（残業・有給取得率）",
     leave:     "有給・休暇管理",
     approve:   "申請承認",
     export:    "CSV出力",
@@ -1262,7 +1313,7 @@ async function loadMasterData() {
 function populateStoreSelectors() {
     const options = `<option value="">全店舗</option>` +
         storeMaster.map(s => `<option value="${s.name}">${s.name}</option>`).join("");
-    ["dailyStore","monthlyStore","timecardStore","leaveStore","exportStore","approveStore"].forEach(id => {
+    ["dailyStore","monthlyStore","timecardStore","analysisStore","leaveStore","exportStore","approveStore"].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.innerHTML = options;
     });
@@ -1306,6 +1357,8 @@ function setTodayDate() {
     if (monthEl && !monthEl.value) monthEl.value = `${y}-${m}`;
     const tcMonthEl = document.getElementById("timecardMonth");
     if (tcMonthEl && !tcMonthEl.value) tcMonthEl.value = `${y}-${m}`;
+    const anMonthEl = document.getElementById("analysisMonth");
+    if (anMonthEl && !anMonthEl.value) anMonthEl.value = `${y}-${m}`;
     const exportEl = document.getElementById("exportMonth");
     if (exportEl && !exportEl.value) exportEl.value = `${y}-${m}`;
 }
@@ -1774,6 +1827,139 @@ async function retireStaffUI() {
         await loadMasterData();
         loadSettingsData();
     } catch (err) { alert("エラー: " + err.message); }
+}
+
+// ─── データ分析（残業時間・有給取得率 / #8） ────────────────────
+let lastAnalysis = [];
+
+async function loadAnalysis() {
+    const store = document.getElementById("analysisStore").value;
+    const month = document.getElementById("analysisMonth").value;
+    if (!month) { alert("年月を選択してください"); return; }
+
+    const tbody   = document.getElementById("analysisTableBody");
+    const summary = document.getElementById("analysisSummary");
+    const csvBtn  = document.getElementById("analysisCsvBtn");
+    const prtBtn  = document.getElementById("analysisPrintBtn");
+    tbody.innerHTML = `<tr><td colspan="8" class="loading"><div class="spinner"></div>集計中...</td></tr>`;
+    summary.style.display = "none";
+    csvBtn.style.display = "none";
+    prtBtn.style.display = "none";
+
+    document.getElementById("analysisTableTitle").textContent =
+        `残業時間・有給取得率（${month}${store ? " / " + store : ""}）`;
+
+    try {
+        const [y, m]   = month.split("-");
+        const lastDay  = new Date(Number(y), Number(m), 0).getDate();
+        const fromDate = `${y}-${m}-01`;
+        const toDate   = `${y}-${m}-${String(lastDay).padStart(2,"0")}`;
+
+        // 打刻ログ（当月）
+        const pRes  = await fetch(`${GAS_API_URL}?${new URLSearchParams({ action:"punchLogs", from:fromDate, to:toDate })}`, { redirect:"follow" });
+        const pData = await pRes.json();
+        if (!pData.ok) throw new Error(pData.error);
+        const logs = (pData.logs || []).filter(l => !store || (l.storeName || "").includes(store));
+
+        // 承認済み有給（年間）
+        let takenMap = {};
+        try {
+            const lRes  = await fetch(`${GAS_API_URL}?${new URLSearchParams({ action:"leaveRequests", status:"approved" })}`, { redirect:"follow" });
+            const lData = await lRes.json();
+            if (lData.ok) {
+                (lData.leaves || []).forEach(l => {
+                    if (!l.leaveType || l.leaveType.includes("paid") || (l.leaveLabel && l.leaveLabel.includes("有給"))) {
+                        takenMap[l.staffName] = (takenMap[l.staffName] || 0) + 1;
+                    }
+                });
+            }
+        } catch (e) { console.warn("[有給取得数の取得失敗]", e); }
+
+        // スタッフ別に日次集計
+        const toMin = t => { if (!t) return null; const [h,mm] = t.split(":").map(Number); return (isNaN(h)||isNaN(mm)) ? null : h*60+mm; };
+        const byStaff = {};
+        logs.forEach(log => {
+            const key = log.staffId || log.staffName;
+            if (!key) return;
+            (byStaff[key] = byStaff[key] || { name: log.staffName, byDate: {} });
+            const d = log.date; if (!d) return;
+            (byStaff[key].byDate[d] = byStaff[key].byDate[d] || []).push(log);
+        });
+
+        const targets = staffMaster.filter(s => !store || (s.store || "").includes(store));
+        lastAnalysis = targets.map(s => {
+            const rec = byStaff[s.staffId] || byStaff[s.name] || { byDate: {} };
+            let workDays = 0, totalMin = 0, overtimeMin = 0;
+            Object.values(rec.byDate).forEach(dayLogs => {
+                const inLog  = dayLogs.find(l => l.punchType === "clockIn"  || l.typeLabel === "出勤");
+                const outLog = [...dayLogs].reverse().find(l => l.punchType === "clockOut" || l.typeLabel === "退勤");
+                const bStart = dayLogs.find(l => l.punchType === "breakStart" || l.typeLabel === "休憩開始");
+                const bEnd   = dayLogs.find(l => l.punchType === "breakEnd"   || l.typeLabel === "休憩終了");
+                const inM = inLog ? toMin(inLog.time) : null;
+                const outM = outLog ? toMin(outLog.time) : null;
+                const bsM = bStart ? toMin(bStart.time) : null;
+                const beM = bEnd ? toMin(bEnd.time) : null;
+                const breakMin = (bsM != null && beM != null && beM > bsM) ? (beM - bsM) : 0;
+                if (inM != null) workDays++;
+                if (inM != null && outM != null && outM > inM) {
+                    const worked = outM - inM - breakMin;
+                    totalMin += worked;
+                    if (worked > 480) overtimeMin += (worked - 480);
+                }
+            });
+            const { granted } = calcPaidLeave(s.joinDate);
+            const taken = takenMap[s.name] || 0;
+            const rate  = granted > 0 ? Math.round(taken / granted * 100) : 0;
+            return { name: s.name, empType: s.empType || "-", workDays, totalMin, overtimeMin, granted, taken, rate };
+        });
+
+        if (lastAnalysis.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="8" class="empty-state">対象スタッフが見つかりません</td></tr>`;
+            return;
+        }
+
+        const fmtH = min => (min > 0 ? `${Math.floor(min/60)}:${String(min%60).padStart(2,"0")}` : "-");
+        tbody.innerHTML = lastAnalysis.map(r => `<tr>
+            <td>${r.name}</td>
+            <td>${r.empType}</td>
+            <td class="tc-num">${r.workDays}日</td>
+            <td class="tc-num">${fmtH(r.totalMin)}</td>
+            <td class="tc-num" style="${r.overtimeMin > 0 ? "color:#dd6b20;font-weight:700;" : ""}">${fmtH(r.overtimeMin)}</td>
+            <td class="tc-num">${r.granted}日</td>
+            <td class="tc-num">${r.taken}日</td>
+            <td class="tc-num" style="font-weight:700;color:${r.rate >= 50 ? "var(--kot-green-dark)" : "#a0aec0"}">${r.granted > 0 ? r.rate + "%" : "-"}</td>
+        </tr>`).join("");
+
+        // サマリーカード
+        const totalOt   = lastAnalysis.reduce((a,r) => a + r.overtimeMin, 0);
+        const avgRate   = (() => { const g = lastAnalysis.filter(r => r.granted > 0); return g.length ? Math.round(g.reduce((a,r)=>a+r.rate,0)/g.length) : 0; })();
+        const otStaff   = lastAnalysis.filter(r => r.overtimeMin > 0).length;
+        const card = (label, val, color) => `<div style="flex:1; min-width:160px; background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:14px 18px;">
+            <div style="font-size:12px; color:#718096;">${label}</div>
+            <div style="font-size:22px; font-weight:700; color:${color};">${val}</div></div>`;
+        summary.innerHTML =
+            card("対象スタッフ", `${lastAnalysis.length}名`, "#2d3748") +
+            card("総残業時間（目安）", fmtH(totalOt), "#dd6b20") +
+            card("残業あり", `${otStaff}名`, "#dd6b20") +
+            card("平均有給取得率", `${avgRate}%`, "var(--kot-green-dark)");
+        summary.style.display = "flex";
+        csvBtn.style.display = "";
+        prtBtn.style.display = "";
+
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="8" class="empty-state">エラー: ${err.message}</td></tr>`;
+    }
+}
+
+function exportAnalysisCSV() {
+    if (!lastAnalysis.length) { alert("先に「表示」で集計してください"); return; }
+    const month = document.getElementById("analysisMonth").value;
+    const store = document.getElementById("analysisStore").value || "全店舗";
+    const fmtH  = min => (min > 0 ? `${Math.floor(min/60)}時間${min%60}分` : "0");
+    const header = ["氏名","雇用形態","出勤日数","総労働時間","残業(8h超目安)","有給付与","有給取得","取得率(%)"];
+    const rows = lastAnalysis.map(r => [r.name, r.empType, r.workDays, fmtH(r.totalMin), fmtH(r.overtimeMin), r.granted, r.taken, r.granted > 0 ? r.rate : ""]);
+    const csv = [header, ...rows].map(row => row.map(c => `"${String(c).replace(/"/g,'""')}"`).join(",")).join("\r\n");
+    downloadCSV(csv, `データ分析_${store}_${month}.csv`);
 }
 
 // ─── 有給管理 ────────────────────────────────────────────────────
