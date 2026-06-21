@@ -619,6 +619,45 @@
             color: var(--kot-green-dark);
             border-color: var(--kot-green);
         }
+
+        /* ─── 個人タイムカード ─── */
+        .timecard-sheet {
+            padding: 24px;
+        }
+        .timecard-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            flex-wrap: wrap;
+            gap: 8px;
+            border-bottom: 2px solid var(--kot-green);
+            padding-bottom: 10px;
+            margin-bottom: 16px;
+        }
+        .timecard-head .tc-name { font-size: 20px; font-weight: 700; }
+        .timecard-head .tc-meta { font-size: 13px; color: #4a5568; }
+        .timecard-table td.tc-holiday { color: #e53e3e; }
+        .timecard-table td.tc-saturday { color: #3182ce; }
+        .timecard-table tfoot td {
+            font-weight: 700;
+            background: #f7fafc;
+            border-top: 2px solid #cbd5e0;
+        }
+        .timecard-table .tc-num { text-align: center; font-variant-numeric: tabular-nums; }
+
+        /* ─── 印刷（タイムカードPDF出力） ─── */
+        @media print {
+            @page { size: A4 portrait; margin: 14mm; }
+            body { background: #fff; }
+            .sidebar, .topbar, .tc-controls, .table-card-header .btn-csv,
+            .modal-overlay, #loginScreen { display: none !important; }
+            .main-content { margin-left: 0 !important; }
+            .page:not(.active) { display: none !important; }
+            .table-card { box-shadow: none !important; border: none !important; }
+            .table-wrapper { overflow: visible !important; }
+            .timecard-table { font-size: 12px; }
+            .timecard-table th { background: #eee !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
     </style>
 </head>
 <body>
@@ -664,6 +703,9 @@
             <div class="nav-item" onclick="showPage('monthly')">
                 <span class="nav-icon">📊</span> 月別データ
             </div>
+            <div class="nav-item" onclick="showPage('timecard')">
+                <span class="nav-icon">📇</span> タイムカード
+            </div>
 
             <div class="nav-section-label">休暇管理</div>
             <div class="nav-item" onclick="showPage('leave')">
@@ -705,6 +747,11 @@
                     <div class="dash-card-icon">📊</div>
                     <div class="dash-card-title">月別データ</div>
                     <div class="dash-card-desc">月次集計・労働時間を確認</div>
+                </div>
+                <div class="dash-card" onclick="showPage('timecard')">
+                    <div class="dash-card-icon">📇</div>
+                    <div class="dash-card-title">タイムカード</div>
+                    <div class="dash-card-desc">個人別の出退勤明細をPDF出力</div>
                 </div>
                 <div class="dash-card" onclick="showPage('leave')">
                     <div class="dash-card-icon">🌴</div>
@@ -798,6 +845,25 @@
                             <tr><td colspan="6" class="empty-state">店舗と年月を選択して「表示」を押してください</td></tr>
                         </tbody>
                     </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 個人タイムカード -->
+        <div class="page" id="page-timecard">
+            <div class="store-selector-bar tc-controls">
+                <label>店舗</label>
+                <select id="timecardStore" onchange="populateTimecardStaff()"><option>読み込み中...</option></select>
+                <label>スタッフ</label>
+                <select id="timecardStaff"><option value="">店舗を選択してください</option></select>
+                <label>年月</label>
+                <input type="month" id="timecardMonth">
+                <button class="btn-search" onclick="loadTimecard()">表示</button>
+                <button class="btn-csv" id="timecardPrintBtn" onclick="printTimecard()" style="display:none;">🖨️ PDF出力（印刷）</button>
+            </div>
+            <div class="table-card">
+                <div class="timecard-sheet" id="timecardSheet">
+                    <div class="empty-state" style="padding:40px;">店舗・スタッフ・年月を選択して「表示」を押してください</div>
                 </div>
             </div>
         </div>
@@ -1024,7 +1090,7 @@ function applyAccessFilter() {
     if (!accessible) return; // 全店舗アクセス可はそのまま
 
     // レベル3以上は「全店舗」オプションを非表示
-    const selectors = ["dailyStore","monthlyStore","leaveStore","exportStore","approveStore"];
+    const selectors = ["dailyStore","monthlyStore","timecardStore","leaveStore","exportStore","approveStore"];
     selectors.forEach(id => {
         const el = document.getElementById(id);
         if (!el) return;
@@ -1063,6 +1129,7 @@ const pageTitles = {
     dashboard: "ダッシュボード",
     daily:     "日別データ",
     monthly:   "月別データ",
+    timecard:  "タイムカード",
     leave:     "有給・休暇管理",
     approve:   "申請承認",
     export:    "CSV出力",
@@ -1107,6 +1174,7 @@ async function loadMasterData() {
 
         populateStoreSelectors();
         applyAccessFilter();
+        populateTimecardStaff();
         loadDashboardAlerts();
 
     } catch (err) {
@@ -1119,10 +1187,11 @@ async function loadMasterData() {
 function populateStoreSelectors() {
     const options = `<option value="">全店舗</option>` +
         storeMaster.map(s => `<option value="${s.name}">${s.name}</option>`).join("");
-    ["dailyStore","monthlyStore","leaveStore","exportStore","approveStore"].forEach(id => {
+    ["dailyStore","monthlyStore","timecardStore","leaveStore","exportStore","approveStore"].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.innerHTML = options;
     });
+    populateTimecardStaff();
 }
 
 // ─── ダッシュボード アラート ────────────────────────────────────
@@ -1160,6 +1229,8 @@ function setTodayDate() {
     if (dateEl && !dateEl.value) dateEl.value = `${y}-${m}-${d}`;
     const monthEl = document.getElementById("monthlyMonth");
     if (monthEl && !monthEl.value) monthEl.value = `${y}-${m}`;
+    const tcMonthEl = document.getElementById("timecardMonth");
+    if (tcMonthEl && !tcMonthEl.value) tcMonthEl.value = `${y}-${m}`;
     const exportEl = document.getElementById("exportMonth");
     if (exportEl && !exportEl.value) exportEl.value = `${y}-${m}`;
 }
@@ -1379,6 +1450,148 @@ async function loadMonthlyData() {
     } catch (err) {
         tbody.innerHTML = `<tr><td colspan="6" class="empty-state">エラー: ${err.message}</td></tr>`;
     }
+}
+
+// ─── 個人タイムカード（出退勤明細・PDF出力） ────────────────────
+const WEEKDAY_JP = ["日","月","火","水","木","金","土"];
+
+// 選択中の店舗に応じてスタッフ選択肢を更新
+function populateTimecardStaff() {
+    const sel = document.getElementById("timecardStaff");
+    if (!sel) return;
+    const store = document.getElementById("timecardStore").value;
+    const list  = staffMaster.filter(s => !store || (s.store || "").includes(store));
+    if (list.length === 0) {
+        sel.innerHTML = `<option value="">対象スタッフがいません</option>`;
+        return;
+    }
+    sel.innerHTML = `<option value="">スタッフを選択</option>` +
+        list.map(s => `<option value="${s.staffId}">${s.name}（${s.store}）</option>`).join("");
+}
+
+async function loadTimecard() {
+    const staffId = document.getElementById("timecardStaff").value;
+    const month   = document.getElementById("timecardMonth").value;
+    const sheet   = document.getElementById("timecardSheet");
+    const printBtn = document.getElementById("timecardPrintBtn");
+    if (!staffId) { alert("スタッフを選択してください"); return; }
+    if (!month)   { alert("年月を選択してください"); return; }
+
+    const staff = staffMaster.find(s => s.staffId === staffId);
+    sheet.innerHTML = `<div class="loading" style="padding:40px;"><div class="spinner"></div>読み込み中...</div>`;
+    printBtn.style.display = "none";
+
+    try {
+        const [y, m]   = month.split("-");
+        const lastDay  = new Date(Number(y), Number(m), 0).getDate();
+        const fromDate = `${y}-${m}-01`;
+        const toDate   = `${y}-${m}-${String(lastDay).padStart(2,"0")}`;
+
+        const params = new URLSearchParams({ action: "punchLogs", from: fromDate, to: toDate });
+        const res    = await fetch(`${GAS_API_URL}?${params}`, { redirect: "follow" });
+        const data   = await res.json();
+        if (!data.ok) throw new Error(data.error);
+
+        // 対象スタッフの打刻のみ（staffId優先、無ければ氏名一致）
+        const logs = (data.logs || []).filter(log =>
+            String(log.staffId) === String(staffId) ||
+            (!log.staffId && staff && log.staffName === staff.name)
+        );
+
+        // 日付ごとに集計
+        const byDate = {};
+        logs.forEach(log => {
+            const d = log.date;
+            if (!d) return;
+            (byDate[d] = byDate[d] || []).push(log);
+        });
+
+        const toMin = t => {
+            if (!t) return null;
+            const [h, mm] = t.split(":").map(Number);
+            return (isNaN(h) || isNaN(mm)) ? null : h * 60 + mm;
+        };
+        const fmtDur = min => (min > 0 ? `${Math.floor(min/60)}:${String(min%60).padStart(2,"0")}` : "-");
+
+        let totalWork = 0, totalBreak = 0, workDays = 0;
+        const rows = [];
+        for (let day = 1; day <= lastDay; day++) {
+            const dateStr = `${y}-${m}-${String(day).padStart(2,"0")}`;
+            const dow     = new Date(Number(y), Number(m)-1, day).getDay();
+            const dayLogs = (byDate[dateStr] || []).sort((a,b) => (a.time||"").localeCompare(b.time||""));
+
+            const inLog  = dayLogs.find(l => l.punchType === "clockIn"  || l.typeLabel === "出勤");
+            const outLog = [...dayLogs].reverse().find(l => l.punchType === "clockOut" || l.typeLabel === "退勤");
+            const bStart = dayLogs.find(l => l.punchType === "breakStart" || l.typeLabel === "休憩開始");
+            const bEnd   = dayLogs.find(l => l.punchType === "breakEnd"   || l.typeLabel === "休憩終了");
+
+            const inM = inLog ? toMin(inLog.time) : null;
+            const outM = outLog ? toMin(outLog.time) : null;
+            const bsM = bStart ? toMin(bStart.time) : null;
+            const beM = bEnd ? toMin(bEnd.time) : null;
+            const breakMin = (bsM != null && beM != null && beM > bsM) ? (beM - bsM) : 0;
+            const workMin  = (inM != null && outM != null && outM > inM) ? (outM - inM - breakMin) : 0;
+
+            if (inM != null) workDays++;
+            totalWork += workMin;
+            totalBreak += breakMin;
+
+            const cls = dow === 0 ? "tc-holiday" : dow === 6 ? "tc-saturday" : "";
+            rows.push(`<tr>
+                <td class="tc-num ${cls}">${day}</td>
+                <td class="tc-num ${cls}">${WEEKDAY_JP[dow]}</td>
+                <td class="tc-num">${inLog ? inLog.time : "-"}</td>
+                <td class="tc-num">${outLog ? outLog.time : "-"}</td>
+                <td class="tc-num">${breakMin > 0 ? fmtDur(breakMin) : "-"}</td>
+                <td class="tc-num">${fmtDur(workMin)}</td>
+            </tr>`);
+        }
+
+        sheet.innerHTML = `
+            <div class="timecard-head">
+                <div>
+                    <div class="tc-name">${staff ? staff.name : staffId} <span style="font-size:13px;font-weight:400;">さん</span></div>
+                    <div class="tc-meta">${staff ? (staff.store || "") + " ／ " + (staff.empType || "") : ""}</div>
+                </div>
+                <div class="tc-meta" style="text-align:right;">
+                    <div style="font-size:16px;font-weight:700;color:#2d3748;">${y}年${Number(m)}月 タイムカード</div>
+                    <div>社員番号：${staffId}</div>
+                </div>
+            </div>
+            <table class="timecard-table">
+                <thead>
+                    <tr>
+                        <th style="width:48px;">日</th>
+                        <th style="width:48px;">曜</th>
+                        <th>出勤</th>
+                        <th>退勤</th>
+                        <th>休憩</th>
+                        <th>実働</th>
+                    </tr>
+                </thead>
+                <tbody>${rows.join("")}</tbody>
+                <tfoot>
+                    <tr>
+                        <td class="tc-num" colspan="2">合計</td>
+                        <td class="tc-num">出勤 ${workDays}日</td>
+                        <td class="tc-num">－</td>
+                        <td class="tc-num">${fmtDur(totalBreak)}</td>
+                        <td class="tc-num">${fmtDur(totalWork)}</td>
+                    </tr>
+                </tfoot>
+            </table>
+            <div class="tc-meta" style="margin-top:10px;">
+                ※「実働」は出勤〜退勤から休憩を差し引いた時間です。打刻漏れがある日は「-」表示になります。
+            </div>`;
+        printBtn.style.display = "";
+
+    } catch (err) {
+        sheet.innerHTML = `<div class="empty-state" style="padding:40px;">エラー: ${err.message}</div>`;
+    }
+}
+
+function printTimecard() {
+    window.print();
 }
 
 // ─── 有給管理 ────────────────────────────────────────────────────
