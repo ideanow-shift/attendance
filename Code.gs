@@ -64,7 +64,20 @@ function doGet(e) {
     const storeRows = SpreadsheetApp.openById(STORE_SS_ID)
       .getSheets()[0].getDataRange().getValues();
     ensurePinColumn(STAFF_SS_ID);
-    const result = { ok: true, store: storeRows, staff: staffRows };
+    // セキュリティ #1・#2：PIN・PIIをクライアントへ返さない。
+    // 列構成は維持（既存パーサ互換）しつつ、PIN列は「設定済みか」のフラグ(1/空)に置換し、
+    // 生年月日・出身地・出身校・性別は空にして配信する。
+    const safeStaff = staffRows.map((row, idx) => {
+      if (idx === 0) return row; // ヘッダー行はそのまま
+      const r = row.slice();
+      r[COL.pin]    = (String(row[COL.pin] || "").trim() !== "") ? "1" : "";
+      r[COL.birth]  = "";
+      r[COL.origin] = "";
+      r[COL.school] = "";
+      r[COL.gender] = "";
+      return r;
+    });
+    const result = { ok: true, store: storeRows, staff: safeStaff };
     return ContentService
       .createTextOutput(JSON.stringify(result))
       .setMimeType(ContentService.MimeType.JSON);
@@ -89,6 +102,7 @@ function doPost(e) {
       return jsonResponse({ ok: false, error: "JSON parse error" });
     }
 
+    if (payload.action === "verifyPin")    return verifyPinAction(payload);
     if (payload.action === "updatePunch")  return updatePunch(payload);
     if (payload.action === "deletePunch")  return deletePunch(payload);
     if (payload.action === "submitLeave")  return submitLeave(payload);
@@ -159,6 +173,28 @@ function doPost(e) {
   } finally {
     lock.releaseLock();
   }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 🔐 PIN事前照合（打刻画面用 / #1・#2：PINをクライアントへ渡さずサーバ照合）
+// payload: { action:"verifyPin", staffId, pin }
+// 返却: { ok, verified, employed, pinSet }
+// ═══════════════════════════════════════════════════════════════
+function verifyPinAction(payload) {
+  const data = SpreadsheetApp.openById(STAFF_SS_ID).getSheets()[0].getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    if (String(row[COL.staffId]).trim() === String(payload.staffId).trim()) {
+      const storedPin = String(row[COL.pin] || "").trim();
+      const active    = String(row[COL.active] || "").trim();
+      const retire    = String(row[COL.retire] || "").trim();
+      const employed  = !((active === "否" || active === "退職" || active === "×" || active === "0") ||
+                          (retire !== "" && retire !== "0" && retire !== "-"));
+      const verified  = storedPin !== "" && storedPin === String(payload.pin || "").trim();
+      return jsonResponse({ ok: true, verified, employed, pinSet: storedPin !== "" });
+    }
+  }
+  return jsonResponse({ ok: true, verified: false, employed: false, pinSet: false, error: "社員番号が見つかりません" });
 }
 
 // ═══════════════════════════════════════════════════════════════

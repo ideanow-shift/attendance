@@ -519,13 +519,14 @@ const PUNCH_TYPES = {
 };
 
 let storeMaster = [];
-let staffMaster = [];   // pin フィールドを含む
+let staffMaster = [];   // pinSet フラグを含む（PIN本体は保持しない #2）
 let currentStore = null;
 let currentStaff = null;
 
 let enteredPin  = "";
 let authStatus  = "idle";   // 'idle' | 'authenticated'
 let pinFailCount = 0;
+let verifying    = false;   // サーバPIN照合の通信中フラグ
 
 const tabId = generateClientId();
 
@@ -603,7 +604,7 @@ function importStaffFromRows(rows) {
         const active  = (row[rActive] || "").trim();
         const retire  = retireIdx !== -1 ? (row[retireIdx] || "").trim() : "";
         const empType = empIdx    !== -1 ? (row[empIdx]    || "").trim() : "";
-        const pin     = pinIdx    !== -1 ? String(row[pinIdx] || "").trim() : "";
+        const pinSet  = pinIdx    !== -1 ? (String(row[pinIdx] || "").trim() !== "") : false;
         const staffId = staffIdIdx !== -1 ? String(row[staffIdIdx] || "").trim() : "";
 
         if (!name || name === "氏名" || /^\d+$/.test(name)) return;
@@ -614,7 +615,7 @@ function importStaffFromRows(rows) {
         staffMaster.push({
             id: staffId || (staffMaster.length + 1).toString(),
             name, store, rank, empType,
-            pin,   // ← スプレッドシートから取得したPIN（クライアント照合用）
+            pinSet,   // ← サーバが返す「PIN設定済みフラグ」（PIN本体はクライアントへ配信しない #2）
         });
     });
     return staffMaster.length > 0;
@@ -718,7 +719,7 @@ function refreshPinCardVisibility() {
     if (currentStaff) {
         card.classList.add("visible");
         // PIN未設定スタッフへの案内
-        if (currentStaff.pin === "") {
+        if (!currentStaff.pinSet) {
             notice.classList.add("show");
             document.getElementById("keypad").style.opacity = "0.4";
             document.getElementById("keypad").style.pointerEvents = "none";
@@ -735,7 +736,8 @@ function refreshPinCardVisibility() {
 function pinAdd(digit) {
     if (!currentStaff) return;
     if (authStatus === "authenticated") return;
-    if (currentStaff.pin === "") return; // PIN未設定は入力不可
+    if (verifying) return;               // サーバ照合中は入力不可
+    if (!currentStaff.pinSet) return;    // PIN未設定は入力不可
     if (enteredPin.length >= 4) return;
     enteredPin += digit;
     renderPinDots();
@@ -761,22 +763,19 @@ function renderPinDots() {
     });
 }
 
-function verifyPin() {
-    // クライアント側でPINを照合（スプレッドシートから取得済みのPINと比較）
-    const ok = currentStaff.pin !== "" && enteredPin === currentStaff.pin;
-    if (ok) {
-        authStatus = "authenticated";
-        pinFailCount = 0;
-        const card = document.getElementById("pinCard");
-        card.classList.remove("err");
-        card.classList.add("authed");
-        document.getElementById("pinPrompt").textContent = "✓ 認証成功";
-        updatePunchButtons();
-    } else {
+async function verifyPin() {
+    // サーバ側でPINを照合（PIN本体はクライアントに存在しない #2）
+    if (!currentStaff || verifying) return;
+    const card = document.getElementById("pinCard");
+    verifying = true;
+    card.classList.remove("err");
+    document.getElementById("pinPrompt").textContent = "🔄 認証中…";
+
+    const fail = (msg) => {
         pinFailCount++;
-        const card = document.getElementById("pinCard");
+        card.classList.remove("authed");
         card.classList.add("err");
-        document.getElementById("pinPrompt").textContent = `❌ 暗証番号が違います（${pinFailCount}回目）`;
+        document.getElementById("pinPrompt").textContent = msg || `❌ 暗証番号が違います（${pinFailCount}回目）`;
         setTimeout(() => {
             enteredPin = "";
             renderPinDots();
@@ -784,7 +783,34 @@ function verifyPin() {
             if (authStatus !== "authenticated") {
                 document.getElementById("pinPrompt").textContent = "🔒 4桁の暗証番号を入力してください";
             }
-        }, 700);
+        }, 800);
+    };
+
+    try {
+        const res = await fetch(GAS_API_URL, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain" }, // GAS CORS対応
+            body: JSON.stringify({ action: "verifyPin", staffId: currentStaff.id, pin: enteredPin }),
+            redirect: "follow",
+        });
+        const data = await res.json();
+        if (data && data.ok && data.verified && data.employed) {
+            authStatus = "authenticated";
+            pinFailCount = 0;
+            card.classList.remove("err");
+            card.classList.add("authed");
+            document.getElementById("pinPrompt").textContent = "✓ 認証成功";
+            updatePunchButtons();
+        } else if (data && data.ok && data.verified && !data.employed) {
+            fail("⚠️ 在職中のスタッフではありません");
+        } else {
+            fail();
+        }
+    } catch (err) {
+        console.error("[PIN照合エラー]", err);
+        fail("⚠️ 通信エラー：もう一度入力してください");
+    } finally {
+        verifying = false;
     }
 }
 
