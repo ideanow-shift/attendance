@@ -70,11 +70,14 @@ function doGet(e) {
     const safeStaff = staffRows.map((row, idx) => {
       if (idx === 0) return row; // ヘッダー行はそのまま
       const r = row.slice();
-      r[COL.pin]    = (String(row[COL.pin] || "").trim() !== "") ? "1" : "";
-      r[COL.birth]  = "";
-      r[COL.origin] = "";
-      r[COL.school] = "";
-      r[COL.gender] = "";
+      r[COL.pin]      = (String(row[COL.pin] || "").trim() !== "") ? "1" : "";
+      r[COL.birth]    = "";
+      r[COL.origin]   = "";
+      r[COL.school]   = "";
+      r[COL.gender]   = "";
+      // 日付は西暦に正規化（和暦混在の解消＋有給計算の不具合防止）
+      r[COL.joinDate] = formatDate(row[COL.joinDate]);
+      r[COL.retire]   = row[COL.retire] ? formatDate(row[COL.retire]) : "";
       return r;
     });
     const result = { ok: true, store: storeRows, staff: safeStaff };
@@ -679,11 +682,45 @@ function formatTime(val) {
   return s;
 }
 
-function formatDate(val) {
-  if (!val) return "";
-  const d = new Date(val);
-  if (isNaN(d)) return String(val).trim();
+function ymd_(d) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+
+// 日付を西暦 YYYY-MM-DD に正規化。和暦（漢字／S・H・R等の略記）も西暦へ変換する。
+function formatDate(val) {
+  if (val === null || val === undefined || val === "") return "";
+  if (val instanceof Date) return isNaN(val) ? "" : ymd_(val);
+
+  let s = String(val).trim();
+  if (s === "" || s === "-" || s === "0") return "";
+  // 全角数字 → 半角
+  s = s.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+
+  // 和暦（元号 + 年[ + 月日]）。base + 年 = 西暦
+  const ERAS = [
+    { re: /(?:令和|令|R)\s*(元|\d+)/, base: 2018 },
+    { re: /(?:平成|平|H)\s*(元|\d+)/, base: 1988 },
+    { re: /(?:昭和|昭|S)\s*(元|\d+)/, base: 1925 },
+    { re: /(?:大正|大|T)\s*(元|\d+)/, base: 1911 },
+    { re: /(?:明治|明|M)\s*(元|\d+)/, base: 1867 },
+  ];
+  for (const e of ERAS) {
+    const m = s.match(e.re);
+    if (m) {
+      const yr   = (m[1] === "元") ? 1 : Number(m[1]);
+      const year = e.base + yr;
+      const md   = s.match(/年\s*(\d{1,2})\s*月\s*(\d{1,2})/) ||
+                   s.match(/[.\/\-]\s*(\d{1,2})\s*[.\/\-]\s*(\d{1,2})/);
+      const mo = md ? Number(md[1]) : 1;
+      const dd = md ? Number(md[2]) : 1;
+      return `${year}-${String(mo).padStart(2,"0")}-${String(dd).padStart(2,"0")}`;
+    }
+  }
+
+  // 西暦（Date解析可能なもの）
+  const dt = new Date(s);
+  if (!isNaN(dt)) return ymd_(dt);
+  return s; // 解析不能は原文のまま
 }
 
 function getPunchLogs(fromDate, toDate, storeName) {
