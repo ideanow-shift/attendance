@@ -722,6 +722,9 @@
             <div class="nav-item" onclick="showPage('export')">
                 <span class="nav-icon">📥</span> CSV出力
             </div>
+            <div class="nav-item" id="navHr" onclick="showPage('hr')" style="display:none;">
+                <span class="nav-icon">🗂️</span> 人事労務
+            </div>
             <div class="nav-item" id="navSettings" onclick="showPage('settings')" style="display:none;">
                 <span class="nav-icon">⚙️</span> 設定
             </div>
@@ -1016,6 +1019,46 @@
             </div>
         </div>
 
+        <!-- 人事労務（個人情報管理 / #1） -->
+        <div class="page" id="page-hr">
+            <div class="store-selector-bar tc-controls">
+                <label>店舗</label>
+                <select id="hrStore"><option value="">全店舗</option></select>
+                <label>在職</label>
+                <select id="hrActive">
+                    <option value="active">在職のみ</option>
+                    <option value="all">全員（退職含む）</option>
+                </select>
+                <input type="text" id="hrSearch" placeholder="氏名・カナ・社員番号で検索" style="width:200px;" oninput="renderHrTable()">
+                <button class="btn-search" onclick="loadHrData()">再読込</button>
+                <button class="btn-csv" id="hrCsvBtn" onclick="exportHrCSV()" style="display:none;">📥 CSV出力</button>
+            </div>
+            <div class="table-card">
+                <div class="table-card-header">
+                    <div class="table-card-title" id="hrTableTitle">スタッフ個人情報</div>
+                    <div style="font-size:12px; color:#718096;">SUPER/EXEC 権限のみ閲覧可</div>
+                </div>
+                <div class="table-wrapper">
+                    <table class="timecard-table" style="min-width:1100px;">
+                        <thead>
+                            <tr>
+                                <th>社員番号</th><th>氏名</th><th>カナ</th><th>会社</th><th>店舗</th>
+                                <th>役職</th><th>雇用形態</th><th>性別</th><th>生年月日</th>
+                                <th>出身地</th><th>出身校</th><th>入社日</th><th>退職日</th><th>PIN</th>
+                            </tr>
+                        </thead>
+                        <tbody id="hrTableBody">
+                            <tr><td colspan="14" class="empty-state">読み込み中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="tc-meta" style="padding:12px 16px; color:#718096; font-size:12px;">
+                    ※この画面は管理者限定の保護APIから取得しています（個人情報は打刻画面には配信されません）。<br>
+                    ※スタッフの追加・退職処理は「設定」画面、PINの設定は社員名簿スプレッドシート（PIN列）で行います。
+                </div>
+            </div>
+        </div>
+
         <!-- 設定（管理者・スタッフ管理） -->
         <div class="page" id="page-settings">
             <!-- 管理者管理 (#5・#6) -->
@@ -1131,6 +1174,7 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbzTipkBtTJfhWPs5Zww
 
 // 仮の管理者認証は廃止 → GASで認証
 let currentAdmin = null;
+let adminToken = null;   // ログイン時に発行されるセッショントークン（個人情報API用）
 let storeMaster = [];
 let staffMaster = [];
 let punchLogs = [];
@@ -1173,15 +1217,19 @@ async function doLogin() {
         }
 
         currentAdmin = data.admin;
+        adminToken   = data.token || null;
         document.getElementById("loginScreen").style.display = "none";
         document.getElementById("mainScreen").style.display  = "block";
         document.getElementById("topbarAdmin").textContent =
             `${currentAdmin.name}（${ROLE_LABELS[currentAdmin.level]?.label || currentAdmin.role}）`;
         updateTopbarDate();
         setInterval(updateTopbarDate, 60000);
-        // 設定（管理者・スタッフ管理）は上位権限のみ（SUPER/EXEC = level 1〜2）
+        // 設定・人事労務（個人情報）は上位権限のみ（SUPER/EXEC = level 1〜2）
+        const isExec = Number(currentAdmin.level) <= 2;
         const navSettings = document.getElementById("navSettings");
-        if (navSettings) navSettings.style.display = (Number(currentAdmin.level) <= 2) ? "" : "none";
+        if (navSettings) navSettings.style.display = isExec ? "" : "none";
+        const navHr = document.getElementById("navHr");
+        if (navHr) navHr.style.display = isExec ? "" : "none";
         loadMasterData();
 
     } catch (err) {
@@ -1233,6 +1281,7 @@ function applyAccessFilter() {
 
 function doLogout() {
     currentAdmin = null;
+    adminToken = null;
     document.getElementById("mainScreen").style.display  = "none";
     document.getElementById("loginScreen").style.display = "flex";
     document.getElementById("loginPass").value = "";
@@ -1256,6 +1305,7 @@ const pageTitles = {
     leave:     "有給・休暇管理",
     approve:   "申請承認",
     export:    "CSV出力",
+    hr:        "人事労務（個人情報管理）",
     settings:  "設定（管理者・スタッフ管理）",
 };
 
@@ -1266,6 +1316,7 @@ function showPage(name) {
     document.querySelector(`.nav-item[onclick="showPage('${name}')"]`).classList.add("active");
     document.getElementById("pageTitle").textContent = pageTitles[name] || name;
     if (name === "settings") loadSettingsData();
+    if (name === "hr") loadHrData();
 }
 
 // ─── マスタデータ取得 ────────────────────────────────────────────
@@ -1313,7 +1364,7 @@ async function loadMasterData() {
 function populateStoreSelectors() {
     const options = `<option value="">全店舗</option>` +
         storeMaster.map(s => `<option value="${s.name}">${s.name}</option>`).join("");
-    ["dailyStore","monthlyStore","timecardStore","analysisStore","leaveStore","exportStore","approveStore"].forEach(id => {
+    ["dailyStore","monthlyStore","timecardStore","analysisStore","hrStore","leaveStore","exportStore","approveStore"].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.innerHTML = options;
     });
@@ -1720,6 +1771,86 @@ async function loadTimecard() {
 
 function printTimecard() {
     window.print();
+}
+
+// ─── 人事労務：個人情報管理（#1 / 保護API） ──────────────────────
+let hrStaffAll = [];
+
+async function loadHrData() {
+    const tbody = document.getElementById("hrTableBody");
+    const csvBtn = document.getElementById("hrCsvBtn");
+    tbody.innerHTML = `<tr><td colspan="14" class="loading"><div class="spinner"></div>読み込み中...</td></tr>`;
+    csvBtn.style.display = "none";
+    if (!adminToken) {
+        tbody.innerHTML = `<tr><td colspan="14" class="empty-state">認証が必要です。再ログインしてください。</td></tr>`;
+        return;
+    }
+    try {
+        const res = await fetch(GAS_API_URL, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain" },
+            body: JSON.stringify({ action: "staffDirectory", token: adminToken }),
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error);
+        hrStaffAll = data.staff || [];
+        renderHrTable();
+        csvBtn.style.display = hrStaffAll.length ? "" : "none";
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="14" class="empty-state">エラー: ${err.message}</td></tr>`;
+    }
+}
+
+function hrFilter() {
+    const store  = document.getElementById("hrStore").value;
+    const mode   = document.getElementById("hrActive").value;
+    const q      = (document.getElementById("hrSearch").value || "").trim().toLowerCase();
+    const isRetired = s => (s.active === "否" || s.active === "退職" || s.active === "×" || s.active === "0") || !!s.retire;
+    return hrStaffAll.filter(s => {
+        if (store && !(s.store || "").includes(store)) return false;
+        if (mode === "active" && isRetired(s)) return false;
+        if (q) {
+            const hay = `${s.name} ${s.kanaLast}${s.kanaFirst} ${s.staffId}`.toLowerCase();
+            if (!hay.includes(q)) return false;
+        }
+        return true;
+    });
+}
+
+function renderHrTable() {
+    const tbody = document.getElementById("hrTableBody");
+    const list = hrFilter();
+    document.getElementById("hrTableTitle").textContent = `スタッフ個人情報（${list.length}名）`;
+    if (!list.length) {
+        tbody.innerHTML = `<tr><td colspan="14" class="empty-state">該当するスタッフがいません</td></tr>`;
+        return;
+    }
+    const e = v => (v == null || v === "") ? "-" : String(v);
+    tbody.innerHTML = list.map(s => `<tr style="${s.retire ? "color:#a0aec0;" : ""}">
+        <td>${e(s.staffId)}</td>
+        <td>${e(s.name)}</td>
+        <td>${e((s.kanaLast || "") + (s.kanaFirst ? " " + s.kanaFirst : "")) || "-"}</td>
+        <td>${e(s.company)}</td>
+        <td>${e(s.store)}</td>
+        <td>${e(s.rank)}</td>
+        <td>${e(s.empType)}</td>
+        <td>${e(s.gender)}</td>
+        <td>${e(s.birth)}</td>
+        <td>${e(s.origin)}</td>
+        <td>${e(s.school)}</td>
+        <td>${e(s.joinDate)}</td>
+        <td>${e(s.retire)}</td>
+        <td>${s.pinSet ? "設定済" : "<span style='color:#e53e3e;'>未設定</span>"}</td>
+    </tr>`).join("");
+}
+
+function exportHrCSV() {
+    const list = hrFilter();
+    if (!list.length) { alert("対象がありません"); return; }
+    const header = ["社員番号","氏名","カナ姓","カナ名","会社","店舗","役職","雇用形態","性別","生年月日","出身地","出身校","入社日","退職日","PIN設定"];
+    const rows = list.map(s => [s.staffId,s.name,s.kanaLast,s.kanaFirst,s.company,s.store,s.rank,s.empType,s.gender,s.birth,s.origin,s.school,s.joinDate,s.retire,s.pinSet?"設定済":"未設定"]);
+    const csv = [header, ...rows].map(r => r.map(c => `"${String(c==null?"":c).replace(/"/g,'""')}"`).join(",")).join("\r\n");
+    downloadCSV(csv, `人事労務_個人情報_${document.getElementById("hrStore").value || "全店舗"}.csv`);
 }
 
 // ─── 設定：管理者管理（#5・#6）・スタッフ管理（#9） ──────────────

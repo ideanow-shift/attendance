@@ -102,7 +102,8 @@ function doPost(e) {
       return jsonResponse({ ok: false, error: "JSON parse error" });
     }
 
-    if (payload.action === "verifyPin")    return verifyPinAction(payload);
+    if (payload.action === "verifyPin")      return verifyPinAction(payload);
+    if (payload.action === "staffDirectory") return staffDirectory(payload);
     if (payload.action === "updatePunch")  return updatePunch(payload);
     if (payload.action === "deletePunch")  return deletePunch(payload);
     if (payload.action === "submitLeave")  return submitLeave(payload);
@@ -198,6 +199,45 @@ function verifyPinAction(payload) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// 🎟️ 管理者セッショントークン（個人情報など保護APIの認可）
+// ═══════════════════════════════════════════════════════════════
+// ログイン時に発行し CacheService に6時間保持。保護APIはトークン必須。
+function makeAdminToken(admin) {
+  const token = Utilities.getUuid();
+  CacheService.getScriptCache()
+    .put("adm_" + token, JSON.stringify({ id: admin.id, level: Number(admin.level) }), 21600);
+  return token;
+}
+// 有効なら {id,level} を返す。minLevel 指定時はその数値以下（=同等以上の権限）のみ許可。
+function checkAdminToken(token, minLevel) {
+  if (!token) return null;
+  const raw = CacheService.getScriptCache().get("adm_" + String(token));
+  if (!raw) return null;
+  let a; try { a = JSON.parse(raw); } catch (e) { return null; }
+  if (minLevel && Number(a.level) > minLevel) return null;
+  return a;
+}
+
+// 人事労務：スタッフ個人情報の取得（#1。保護API＝SUPER/EXEC のみ・トークン必須）
+function staffDirectory(payload) {
+  const auth = checkAdminToken(payload.token, 2);
+  if (!auth) return jsonResponse({ ok: false, error: "権限がありません（再ログインが必要な場合があります）" });
+  const rows = SpreadsheetApp.openById(STAFF_SS_ID).getSheets()[0].getDataRange().getValues();
+  const staff = rows.slice(1)
+    .filter(r => String(r[COL.name] || "").trim() && r[COL.name] !== "氏名")
+    .map(r => ({
+      staffId:  r[COL.staffId], company: r[COL.company], store: r[COL.store],
+      rank:     r[COL.rank],    empType: r[COL.empType], active: r[COL.active],
+      name:     r[COL.name],    kanaLast: r[COL.kanaLast], kanaFirst: r[COL.kanaFirst],
+      gender:   r[COL.gender],  birth: formatDate(r[COL.birth]), origin: r[COL.origin],
+      school:   r[COL.school],  joinDate: formatDate(r[COL.joinDate]),
+      retire:   r[COL.retire] ? formatDate(r[COL.retire]) : "",
+      pinSet:   String(r[COL.pin] || "").trim() !== "",
+    }));
+  return jsonResponse({ ok: true, staff });
+}
+
+// ═══════════════════════════════════════════════════════════════
 // 👤 管理者認証（IDEA NOV 勤怠管理DB / admin_master シート）
 // ═══════════════════════════════════════════════════════════════
 
@@ -254,8 +294,10 @@ function adminLogin(e) {
           stores:   String(row[5]).trim(), // "全店舗" or "BASSA久米川店,BASSA新所沢店"
           memo:     row[6],
         };
+        // セッショントークンを発行（個人情報など保護APIの認可に使用）
+        const token = makeAdminToken(admin);
         return ContentService
-          .createTextOutput(JSON.stringify({ ok: true, admin }))
+          .createTextOutput(JSON.stringify({ ok: true, admin, token }))
           .setMimeType(ContentService.MimeType.JSON);
       }
     }
