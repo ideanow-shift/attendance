@@ -717,7 +717,14 @@ function formatDate(val) {
     }
   }
 
-  // 西暦（Date解析可能なもの）
+  // 西暦（YYYY年M月D日 / YYYY-M-D / YYYY/M/D / YYYY.M.D など）
+  const g = s.match(/(\d{4})\s*[年.\/\-]\s*(\d{1,2})\s*[月.\/\-]\s*(\d{1,2})/);
+  if (g) return `${g[1]}-${String(Number(g[2])).padStart(2,"0")}-${String(Number(g[3])).padStart(2,"0")}`;
+  // 西暦（年月のみ）
+  const g2 = s.match(/(\d{4})\s*[年.\/\-]\s*(\d{1,2})\s*月?$/);
+  if (g2) return `${g2[1]}-${String(Number(g2[2])).padStart(2,"0")}-01`;
+
+  // その他 Date 解析可能なもの
   const dt = new Date(s);
   if (!isNaN(dt)) return ymd_(dt);
   return s; // 解析不能は原文のまま
